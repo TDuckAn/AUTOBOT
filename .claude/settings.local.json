@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:drive.google.com)",
+      "mcp__096608db-fd0f-437d-b358-f09a11b9d221__read_file_content",
+      "mcp__096608db-fd0f-437d-b358-f09a11b9d221__search_files",
+      "Bash(python -c ' *)",
+      "Bash(python)",
+      "mcp__096608db-fd0f-437d-b358-f09a11b9d221__download_file_content",
+      "Bash(del \"H:\\\\Class\\\\PRN3\\\\AUTOBOT\\\\sequence_diagram.xml\" \"H:\\\\Class\\\\PRN3\\\\AUTOBOT\\\\diagrams.xml\" \"H:\\\\Class\\\\PRN3\\\\AUTOBOT\\\\diagram_text.txt\" \"H:\\\\Class\\\\PRN3\\\\AUTOBOT\\\\diagrams_text.txt\" \"H:\\\\Class\\\\PRN3\\\\AUTOBOT\\\\diagrams_full.txt\" 2>NUL && echo \"cleaned up\")",
+      "Read(//c/Users/Admin/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/965a8c7b-e6bc-42c3-8127-78fb04186284/689017da-aca1-4c66-b8c0-0d58a76a0b90/skills/docx/**)",
+      "Bash(extract-text \"H:\\\\Class\\\\PRN3\\\\drive-download-20260525T153723Z-3-001\\\\AutoWash_Pro_SRS_v2.docx\")",
+      "Bash(pandoc \"H:\\\\Class\\\\PRN3\\\\drive-download-20260525T153723Z-3-001\\\\AutoWash_Pro_SRS_v2.docx\" -t markdown)",
+      "PowerShell(pandoc \"H:\\\\Class\\\\PRN3\\\\drive-download-20260525T153723Z-3-001\\\\AutoWash_Pro_SRS_v2.docx\" -t plain -o \"H:\\\\Class\\\\PRN3\\\\AUTOBOT\\\\srs_v2.txt\" 2>&1; Write-Output \"Exit: $LASTEXITCODE\")"
+    ]
+  }
+}
