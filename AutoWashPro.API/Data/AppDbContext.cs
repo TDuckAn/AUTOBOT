@@ -23,6 +23,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Promotion> Promotions => Set<Promotion>();
     public DbSet<SystemUser> SystemUsers => Set<SystemUser>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<SystemConfig> SystemConfigs => Set<SystemConfig>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -38,6 +39,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         ConfigurePromotion(modelBuilder);
         ConfigureSystemUser(modelBuilder);
         ConfigureNotification(modelBuilder);
+        ConfigureSystemConfig(modelBuilder);
         SeedData(modelBuilder);
     }
 
@@ -231,6 +233,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .WithMany(customer => customer.Notifications)
                 .HasForeignKey(notification => notification.CustomerId)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+    }
+
+    private static void ConfigureSystemConfig(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<SystemConfig>(entity =>
+        {
+            entity.HasKey(config => config.Key);
+            entity.Property(config => config.Key).HasMaxLength(120).IsRequired();
+            entity.Property(config => config.Value).HasMaxLength(500).IsRequired();
+            entity.Property(config => config.UpdatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
         });
     }
 
