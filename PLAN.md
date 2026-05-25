@@ -239,10 +239,10 @@
 | Phase | Status | Notes |
 |-------|--------|-------|
 | 0 — Foundation | ✅ Completed | Initial schema migration applied to AutoWashPro database |
-| 1 — Auth | ⬜ Not started | |
-| 2 — Service Catalogue | ⬜ Not started | |
-| 3 — Booking Engine | ⬜ Not started | |
-| 4 — Checkout & Loyalty | ⬜ Not started | |
-| 5 — Admin Config & Reports | ⬜ Not started | |
-| 6 — Background Jobs | ⬜ Not started | |
-| 7 — Quality & Polish | ⬜ Not started | |
+| 1 — Auth | ✅ Completed | JWT auth, role policies, customer/system login endpoints, exception middleware, and config-driven CORS implemented |
+| 2 — Service Catalogue | ✅ Completed | Public catalogue reads and AdminOnly service/pricing management endpoints implemented |
+| 3 — Booking Engine | ✅ Completed | Customer booking endpoints, staff walk-ins, availability, capacity checks, cancellation, pagination, and queue implemented |
+| 4 — Checkout & Loyalty | ✅ Completed | Checkout completion, point ledger updates, loyalty/profile/vehicle/notification customer endpoints implemented |
+| 5 — Admin Config & Reports | ✅ Completed | Admin tier/promotion/customer configuration and operational report endpoints implemented |
+| 6 — Background Jobs | ✅ Completed | Monthly maintenance job, point expiry, tier review, persisted run flag, and near-expiry notifications implemented |
+| 7 — Quality & Polish | ✅ Completed | Request logging, Swagger bearer docs, XML docs, pagination audit, production config template, and validation polish implemented |
