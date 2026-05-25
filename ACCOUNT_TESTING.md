@@ -57,3 +57,15 @@ These tests need seeded or provided credentials/data and should be run later whe
 - Verify request logging entries include method, path, status, and duration for representative endpoints.
 - Verify pagination metadata on all list endpoints with enough data for multiple pages.
 - Verify production deployment uses environment variables listed in `appsettings.Production.json`.
+
+## Executed Results - 2026-05-26
+
+- Build: PASS.
+- Seeded login tests: PASS for Admin, Staff, and Customers `0901234567`, `0912345678`, `0934567890` using `Password123!`.
+- Phase 2 service catalogue tests: PASS, including Admin CRUD and Staff/Customer `AdminOnly` rejection.
+- Phase 3 booking tests: PASS, including availability, capacity-full slot, customer booking/cancel, walk-in creation, admin list, queue, and unauthenticated rejection.
+- Phase 4 checkout/loyalty tests: PASS, including Discount, FreeWash, BonusPoints, point redemption, insufficient balance rejection, walk-in completion, profile, vehicle add/delete, loyalty, and notifications.
+- Phase 5 admin tests: PASS, including tier list/update, promotion CRUD, invalid promotion rejection, customer filter, tier override/restore, reports, and role rejection.
+- Phase 6 observable tests: PASS for near-expiry notification visibility. Monthly first-of-month expiry/tier-review execution was not forced because it requires time control or a manual job trigger.
+- Phase 7 tests: PASS for Swagger Bearer security, pagination metadata, and request logging output.
+- Fix made during testing: configured JSON enum string conversion so API DTOs accept and return enum names such as `Discount`, `BonusPoints`, and `PointsExpiry`.
