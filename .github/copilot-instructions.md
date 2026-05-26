@@ -6,8 +6,8 @@
 
 ## Project at a Glance
 - **AutoWash Pro** — motorbike wash management: loyalty tiers, advance booking, walk-in support
-- **Stack:** ASP.NET Core 9 Web API · EF Core 9 · SQL Server · JWT Bearer
-- **Architecture:** 3-layer monolith — Controllers → Services → Data (AppDbContext)
+- **Stack:** ASP.NET Core 9 Web API · EF Core 9 · SQL Server · JWT Bearer · React 18 + Vite 5
+- **Architecture:** 3-layer backend monolith — API Controllers → BLL Services → DAL Data; Staff/Admin frontend in `AutoWashPro.Web`
 - **Pattern:** Services return `Result<T>` (never throw for business errors)
 
 ---
@@ -213,6 +213,28 @@ booking.CreatedBy = staffUserId;  // always set for walk-ins
 
 ---
 
+## Frontend Quick Reference (AutoWashPro.Web)
+
+```js
+// API calls — import from src/api/<domain>.js, all go through axios client with Bearer header
+import { getQueue, completeBooking } from '../api/bookings.js'
+import { unwrapPaged, getApiError } from '../api/client.js'   // unwrapPaged → items[]
+
+// Auth — JWT in localStorage, role claim is the full MS URI
+import { getRole, setToken, clearToken, isAuthenticated } from '../hooks/useAuth.js'
+// Roles: 'Staff' | 'Admin'  (exact strings)
+
+// Formatting
+import { formatVND, formatVNDShort, formatTime } from '../utils/format.js'
+```
+
+CSS uses `.aw-*` classes from `src/styles/design-system.css` — **no Tailwind**.
+Key classes: `.aw-btn[-primary|-green|-ghost|-danger|-sm|-lg]` · `.aw-input` · `.aw-card` · `.aw-table` · `.aw-badge[-green|-blue|-amber|-neutral]` · `.aw-tier-badge .aw-tier-[dong|bac|vang|platinum]`
+
+CSS vars: `--primary` (ocean teal) · `--green` · `--gold` · `--danger` · `--sidebar-bg` (#111318) · `--ink-900/700/500/400` · `--border` · `--surface`
+
+---
+
 ## Files to Create Per Phase
 - **Ph 0:** All entity files + AppDbContext + Result.cs + AppConstants.cs + DateTimeExtensions.cs + appsettings.json + Program.cs skeleton
 - **Ph 1:** AuthController + AuthService + ExceptionHandlingMiddleware + JWT config in Program.cs
@@ -222,3 +244,4 @@ booking.CreatedBy = staffUserId;  // always set for walk-ins
 - **Ph 5:** Admin controllers (Customer, Promotion, Tier, Report) + PromotionService + admin DTOs
 - **Ph 6:** MonthlyMaintenanceJob + RequestLoggingMiddleware
 - **Ph 7:** Pagination audit + Swagger config + input validation + CORS from config
+- **Ph 9:** `AutoWashPro.Web` Vite app + staff/admin login, queue, walk-in, dashboard, services, promotions, tiers, customers

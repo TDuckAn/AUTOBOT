@@ -5,7 +5,7 @@
 ---
 
 ## Project in One Line
-Web-based motorbike wash management system for Vietnam SMBs — loyalty tiers, advance booking with capacity limits, walk-in support. Backend: ASP.NET Core 9 monolith. DB: SQL Server. See PLAN.md for full build plan.
+Full-stack motorbike wash management system for Vietnam SMBs — loyalty tiers, advance booking with capacity limits, walk-in support. Backend: ASP.NET Core 9 (API/BLL/DAL). Frontend: React 18 + Vite 5 (Staff & Admin). DB: SQL Server. See PLAN.md for full build plan.
 
 ## Source of Truth Hierarchy
 1. **SYSTEM_SPEC.md** — authoritative for implementation (overrides SRS on any conflict)
@@ -109,6 +109,7 @@ WHERE status NOT IN ('Cancelled')
 | 6 — Background Jobs | ✅ Completed |
 | 7 — Quality & Polish | ✅ Completed |
 | 8 — 3-Layer Refactor | ✅ Completed |
+| 9 — Frontend (Staff & Admin) | ✅ Completed |
 
 ---
 

@@ -9,7 +9,7 @@
 | Layer | Tech |
 |-------|------|
 | Runtime | .NET 9 / C# |
-| Framework | ASP.NET Core Web API with API / BLL / DAL projects (no microservices) |
+| Framework | ASP.NET Core Web API with API / BLL / DAL projects (no microservices); React 18 + Vite 5 frontend |
 | ORM | EF Core 9.0, Code-First, SqlServer provider |
 | Auth | JWT Bearer (`Microsoft.AspNetCore.Authentication.JwtBearer`) |
 | Password | BCrypt.Net-Next v4 |
@@ -119,6 +119,21 @@ AutoWashPro.API/
 |-- Program.cs
 |-- AutoWashPro.API.csproj
 `-- AutoWashPro.API.sln
+
+AutoWashPro.Web/
+|-- src/
+|   |-- api/
+|   |-- components/
+|   |-- hooks/
+|   |-- pages/
+|   |   |-- staff/
+|   |   `-- admin/
+|   |-- styles/
+|   |   `-- design-system.css
+|   `-- main.jsx
+|-- index.html
+|-- vite.config.js
+`-- package.json
 ```
 
 ---
@@ -410,8 +425,68 @@ public class Result<T>
 
 ---
 
+## Frontend Patterns (AutoWashPro.Web)
+
+### API client usage
+
+```js
+// All HTTP calls go through src/api/client.js (axios, baseURL '/api', Bearer interceptor)
+// Each domain has its own module:
+import { getQueue, completeBooking, createWalkInBooking } from '../api/bookings.js'
+import { listServices, listPricing, createService, updateService } from '../api/services.js'
+
+// Paginated responses: use unwrapPaged() from client.js → returns items array
+import { unwrapPaged, getApiError } from '../api/client.js'
+const rows = unwrapPaged(await getQueue())
+
+// Error display: getApiError(err, fallback) extracts detail/title/error from RFC 7807 body
+```
+
+### Auth hook
+
+```js
+import { getRole, setToken, clearToken, isAuthenticated } from '../hooks/useAuth.js'
+// ROLE_CLAIM = 'http://schemas.microsoft.com/ws/2008/06/identity/claims/role'
+// Roles: 'Staff' | 'Admin' (exact strings from JWT)
+// On login: setToken(data.token) → navigate based on getRole()
+// On logout: clearToken() → navigate to login
+```
+
+### Protected route
+
+```jsx
+// ProtectedRoute checks isAuthenticated() && getRole() === role
+// Redirects to /staff/login or /admin/login if failed
+<ProtectedRoute role="Admin"><AdminDashboard /></ProtectedRoute>
+```
+
+### CSS classes (from design-system.css — do NOT add Tailwind)
+
+```text
+.aw-btn .aw-btn-primary/.aw-btn-green/.aw-btn-ghost/.aw-btn-danger  → buttons
+.aw-btn-sm / .aw-btn-lg                                              → size variants
+.aw-input / .aw-input-lg                                             → text inputs
+.aw-card                                                             → card container (border only, no shadow)
+.aw-table / th / td                                                  → Stripe-style table
+.aw-badge .aw-badge-green/.aw-badge-blue/.aw-badge-amber/.aw-badge-neutral → status badges
+.aw-tier-badge .aw-tier-dong/.aw-tier-bac/.aw-tier-vang/.aw-tier-platinum → tier badges
+.aw-scroll / .aw-noscroll                                            → scrollable containers
+.aw-photo                                                            → striped photo placeholder
+CSS vars: --primary, --green, --gold, --danger, --sidebar-bg, --ink-900/700/500/400
+```
+
+### Formatting
+
+```js
+import { formatVND, formatVNDShort, formatTime, formatDate } from '../utils/format.js'
+// formatVND(50000) → '50.000₫'   formatVNDShort(1200000) → '1.2tr'
+// formatTime(isoString) → 'HH:MM'  formatDate(isoString) → 'dd/mm/yyyy'
+```
+
+---
+
 ## What NOT To Do
-- Do NOT create microservices, message queues, or projects beyond `AutoWashPro.API`, `AutoWashPro.BLL`, and `AutoWashPro.DAL`
+- Do NOT create microservices, message queues, or projects beyond `AutoWashPro.API`, `AutoWashPro.BLL`, `AutoWashPro.DAL`, and `AutoWashPro.Web`
 - Do NOT use `WidthType.PERCENTAGE` (Swagger-only concern — irrelevant here)
 - Do NOT hard-code JWT secrets, admin passwords, or connection strings
 - Do NOT use `BookingStatus.Pending` (removed by decision D3)
