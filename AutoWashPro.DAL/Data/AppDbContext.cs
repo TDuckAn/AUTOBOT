@@ -12,6 +12,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     private static readonly Guid PlatinumTierId = Guid.Parse("44444444-4444-4444-4444-444444444444");
     private static readonly Guid GuestCustomerGuid = Guid.Parse("00000000-0000-0000-0000-000000000001");
     private static readonly DateTime SeededAt = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+    private static readonly Guid VehicleTypeTayGaId  = Guid.Parse("A1111111-0000-0000-0000-000000000001");
+    private static readonly Guid VehicleTypeSoId     = Guid.Parse("A1111111-0000-0000-0000-000000000002");
+    private static readonly Guid VehicleTypeCongTayId = Guid.Parse("A1111111-0000-0000-0000-000000000003");
+    private static readonly Guid VehicleTypeDienId   = Guid.Parse("A1111111-0000-0000-0000-000000000004");
 
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
@@ -24,6 +28,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<SystemUser> SystemUsers => Set<SystemUser>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<SystemConfig> SystemConfigs => Set<SystemConfig>();
+    public DbSet<VehicleType> VehicleTypes => Set<VehicleType>();
+    public DbSet<VoucherRedemptionRule> VoucherRedemptionRules => Set<VoucherRedemptionRule>();
+    public DbSet<CustomerVoucher> CustomerVouchers => Set<CustomerVoucher>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -40,6 +47,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         ConfigureSystemUser(modelBuilder);
         ConfigureNotification(modelBuilder);
         ConfigureSystemConfig(modelBuilder);
+        ConfigureVehicleType(modelBuilder);
+        ConfigureVoucherRedemptionRule(modelBuilder);
+        ConfigureCustomerVoucher(modelBuilder);
         SeedData(modelBuilder);
     }
 
@@ -100,8 +110,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(pricing => pricing.IsActive).HasDefaultValue(true);
             entity.Property(pricing => pricing.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
             entity.ToTable(table => table.HasCheckConstraint(
-                "CK_ServicePricing_DurationMinutes_SlotMultiple",
-                "[DurationMinutes] > 0 AND [DurationMinutes] % 30 = 0"));
+                "CK_ServicePricing_DurationMinutes_Positive",
+                "[DurationMinutes] > 0"));
             entity.HasOne(pricing => pricing.Service)
                 .WithMany(service => service.Pricings)
                 .HasForeignKey(pricing => pricing.ServiceId)
@@ -247,6 +257,50 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         });
     }
 
+    private static void ConfigureVehicleType(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<VehicleType>(entity =>
+        {
+            entity.HasKey(vt => vt.VehicleTypeId);
+            entity.Property(vt => vt.Name).HasMaxLength(100).IsRequired();
+            entity.Property(vt => vt.IsActive).HasDefaultValue(true);
+            entity.Property(vt => vt.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
+            entity.HasIndex(vt => vt.Name).IsUnique();
+        });
+    }
+
+    private static void ConfigureVoucherRedemptionRule(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<VoucherRedemptionRule>(entity =>
+        {
+            entity.HasKey(r => r.VoucherRuleId);
+            entity.Property(r => r.Name).HasMaxLength(150).IsRequired();
+            entity.Property(r => r.Description).HasMaxLength(500);
+            entity.Property(r => r.DiscountAmount).HasPrecision(18, 2);
+            entity.Property(r => r.IsActive).HasDefaultValue(true);
+            entity.Property(r => r.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
+        });
+    }
+
+    private static void ConfigureCustomerVoucher(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<CustomerVoucher>(entity =>
+        {
+            entity.HasKey(v => v.VoucherId);
+            entity.Property(v => v.Code).HasMaxLength(20).IsRequired();
+            entity.Property(v => v.DiscountAmount).HasPrecision(18, 2);
+            entity.Property(v => v.RedeemedAt).HasDefaultValueSql("SYSUTCDATETIME()");
+            entity.HasOne(v => v.Customer)
+                .WithMany()
+                .HasForeignKey(v => v.CustomerId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(v => v.VoucherRule)
+                .WithMany(r => r.CustomerVouchers)
+                .HasForeignKey(v => v.VoucherRuleId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+    }
+
     private static void SeedData(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<TierConfig>().HasData(
@@ -310,5 +364,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             CreatedAt = SeededAt,
             UpdatedAt = SeededAt
         });
+
+        modelBuilder.Entity<VehicleType>().HasData(
+            new VehicleType { VehicleTypeId = VehicleTypeTayGaId,  Name = "Xe tay ga",   IsActive = true, CreatedAt = SeededAt },
+            new VehicleType { VehicleTypeId = VehicleTypeSoId,     Name = "Xe số",        IsActive = true, CreatedAt = SeededAt },
+            new VehicleType { VehicleTypeId = VehicleTypeCongTayId, Name = "Xe côn tay",  IsActive = true, CreatedAt = SeededAt },
+            new VehicleType { VehicleTypeId = VehicleTypeDienId,   Name = "Xe điện",      IsActive = true, CreatedAt = SeededAt }
+        );
     }
 }

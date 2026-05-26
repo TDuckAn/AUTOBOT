@@ -11,7 +11,7 @@ public class CreatePricingDto
     [Range(0.01, 9999999999999999)]
     public decimal Price { get; set; }
 
-    [Range(30, 1440)]
+    [Range(1, 1440)]
     public int DurationMinutes { get; set; }
 
     public bool IsActive { get; set; } = true;

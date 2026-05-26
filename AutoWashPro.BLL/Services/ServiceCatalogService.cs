@@ -27,6 +27,16 @@ public class ServiceCatalogService(
         return Result<PagedResultDto<ServiceDto>>.Ok(await ToPagedResultAsync(query, page, pageSize, ToServiceDto));
     }
 
+    public async Task<Result<PagedResultDto<ServiceDto>>> ListAllServicesAsync(int page, int pageSize)
+    {
+        var query = _db.Services
+            .AsNoTracking()
+            .OrderBy(service => service.IsActive ? 0 : 1)
+            .ThenBy(service => service.Name);
+
+        return Result<PagedResultDto<ServiceDto>>.Ok(await ToPagedResultAsync(query, page, pageSize, ToServiceDto));
+    }
+
     public async Task<Result<PagedResultDto<ServicePricingDto>>> GetPricingByServiceAsync(Guid serviceId, int page, int pageSize)
     {
         var serviceExists = await _db.Services
@@ -175,11 +185,6 @@ public class ServiceCatalogService(
 
     private static string? ValidatePricing(CreatePricingDto request)
     {
-        if (request.DurationMinutes % 30 != 0)
-        {
-            return "Duration minutes must be a multiple of 30.";
-        }
-
         return request.Price <= 0 ? "Price must be greater than zero." : null;
     }
 

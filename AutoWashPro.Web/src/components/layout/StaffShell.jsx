@@ -5,7 +5,7 @@ import { Icons } from '../icons.jsx'
 const NAV = [
   { id: 'queue', icon: 'Calendar', label: 'Hàng chờ', path: '/staff/queue' },
   { id: 'walkin', icon: 'Plus', label: 'Khách vãng lai', path: '/staff/walkin' },
-  { id: 'history', icon: 'Receipt', label: 'Lịch sử', path: '/staff/queue' },
+  { id: 'history', icon: 'Receipt', label: 'Danh sách', path: '/staff/list' },
 ]
 
 export function StaffShell({ active, children, title, headerRight, queueCount = 0 }) {
@@ -14,7 +14,7 @@ export function StaffShell({ active, children, title, headerRight, queueCount = 
 
   const logout = () => {
     clearToken()
-    navigate('/staff/login')
+    navigate('/login')
   }
 
   return (

@@ -7,4 +7,11 @@ public class ReportSummaryDto
     public decimal Revenue { get; set; }
     public int ActiveCustomers { get; set; }
     public decimal SlotUtilisationPercent { get; set; }
+    public IList<DailyRevenueDto> RevenueHistory { get; set; } = new List<DailyRevenueDto>();
+}
+
+public class DailyRevenueDto
+{
+    public string Day { get; set; } = string.Empty;
+    public decimal Value { get; set; }
 }

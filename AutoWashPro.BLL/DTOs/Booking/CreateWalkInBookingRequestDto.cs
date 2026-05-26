@@ -10,9 +10,6 @@ public class CreateWalkInBookingRequestDto
     public Guid? PromotionId { get; set; }
 
     [Required]
-    public DateTime ScheduledAt { get; set; }
-
-    [Required]
     [MaxLength(30)]
     public string WalkinPhone { get; set; } = string.Empty;
 

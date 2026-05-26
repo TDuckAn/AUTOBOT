@@ -14,7 +14,7 @@ export function AdminShell({ active, title, subtitle, children, headerActions })
   const navigate = useNavigate()
   const logout = () => {
     clearToken()
-    navigate('/admin/login')
+    navigate('/login')
   }
 
   return (
@@ -55,7 +55,6 @@ export function AdminShell({ active, title, subtitle, children, headerActions })
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, borderTop: '1px solid var(--sidebar-border)', paddingTop: 10, marginTop: 10 }}>
-          <button className="aw-nav-item"><Icons.Settings size={15} />Cài đặt</button>
           <button className="aw-nav-item" onClick={logout}><Icons.LogOut size={15} />Đăng xuất</button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 8px 2px', marginTop: 4 }}>
             <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'oklch(45% 0.02 240)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.8)' }}>AD</div>

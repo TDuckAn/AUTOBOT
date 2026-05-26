@@ -131,12 +131,8 @@ public class BookingService(
             return Result<BookingResponseDto>.Fail("System user was not found.");
         }
 
-        var scheduledAt = request.ScheduledAt.RoundDownToSlot(_slotDurationMinutes);
+        var scheduledAt = DateTime.UtcNow.RoundDownToSlot(_slotDurationMinutes);
         var expectedEndAt = scheduledAt.AddMinutes(pricing.DurationMinutes);
-        if (scheduledAt < DateTime.UtcNow.RoundDownToSlot(_slotDurationMinutes))
-        {
-            return Result<BookingResponseDto>.Fail("Scheduled time must be in the future.");
-        }
 
         var phone = request.WalkinPhone.Trim();
         var licensePlate = request.WalkinLicensePlate.Trim();
@@ -324,6 +320,17 @@ public class BookingService(
         if (!vehicleBelongsToCustomer)
         {
             return Result<(ServicePricing, Customer)>.Fail("Vehicle was not found for this customer.");
+        }
+
+        var expectedEndAt = scheduledAt.AddMinutes(pricing.DurationMinutes);
+        var sameVehicleConflict = await _db.Bookings.AnyAsync(b =>
+            b.VehicleId == request.VehicleId
+            && b.Status == BookingStatus.Confirmed
+            && b.ScheduledAt < expectedEndAt
+            && b.ExpectedEndAt > scheduledAt);
+        if (sameVehicleConflict)
+        {
+            return Result<(ServicePricing, Customer)>.Fail("Xe này đã có lịch đặt trùng giờ. Vui lòng chọn giờ khác.");
         }
 
         var nowSlot = DateTime.UtcNow.RoundDownToSlot(_slotDurationMinutes);

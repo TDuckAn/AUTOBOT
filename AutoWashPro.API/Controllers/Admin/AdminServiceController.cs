@@ -15,6 +15,13 @@ public class AdminServiceController(
     private readonly IServiceCatalogService _serviceCatalogService = serviceCatalogService;
     private readonly ILogger<AdminServiceController> _logger = logger;
 
+    [HttpGet]
+    public async Task<IActionResult> ListServices([FromQuery] int page = 1, [FromQuery] int pageSize = 100)
+    {
+        var result = await _serviceCatalogService.ListAllServicesAsync(page, pageSize);
+        return result.IsSuccess ? Ok(result.Value) : BadRequest(result.Error);
+    }
+
     [HttpPost]
     public async Task<IActionResult> CreateService(CreateServiceDto request)
     {
@@ -52,4 +59,5 @@ public class AdminServiceController(
         var result = await _serviceCatalogService.UpdatePricingAsync(id, pricingId, request);
         return result.IsSuccess ? Ok(result.Value) : BadRequest(result.Error);
     }
+
 }

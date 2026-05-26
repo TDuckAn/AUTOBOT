@@ -26,17 +26,20 @@ export function AdminCustomers() {
         .then((data) => {
           const rows = unwrapPaged(data)
           setCustomers(rows)
-          setSelectedId((current) => {
-            const next = current ?? rows[0]?.customerId ?? null
-            const customer = rows.find((row) => row.customerId === next) ?? rows[0]
-            setTierId(customer?.tierId ?? '')
-            return next
-          })
+          setSelectedId((current) => current ?? rows[0]?.customerId ?? null)
         })
         .catch((err) => setError(getApiError(err, 'Không tải được khách hàng.')))
     }, 300)
     return () => clearTimeout(handle)
   }, [search])
+
+  // Sync tierId whenever the selected customer changes
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      const customer = customers.find((c) => c.customerId === selectedId)
+      if (customer) setTierId(customer.tierId ?? '')
+    })
+  }, [selectedId, customers])
 
   const selected = useMemo(() => customers.find((customer) => customer.customerId === selectedId), [customers, selectedId])
 

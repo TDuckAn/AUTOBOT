@@ -1,6 +1,6 @@
+using AutoWashPro.BLL.DTOs.Admin;
 using AutoWashPro.DAL.Data;
 using AutoWashPro.DAL.Data.Entities.Enums;
-using AutoWashPro.BLL.DTOs.Admin;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -42,6 +42,7 @@ public class AdminReportController(
             .CountAsync();
 
         var utilisation = await CalculateSlotUtilisationAsync(dayStart, dayEnd);
+        var revenueHistory = await BuildRevenueHistoryAsync(reportDate, 7);
 
         _logger.LogDebug("Generated summary report for {ReportDate}.", reportDate);
         return Ok(new ReportSummaryDto
@@ -50,7 +51,8 @@ public class AdminReportController(
             DailyWashVolume = washVolume,
             Revenue = revenue,
             ActiveCustomers = activeCustomers,
-            SlotUtilisationPercent = utilisation
+            SlotUtilisationPercent = utilisation,
+            RevenueHistory = revenueHistory,
         });
     }
 
@@ -75,6 +77,23 @@ public class AdminReportController(
             Note = "Tier change history is not persisted until the Phase 6 maintenance job is implemented.",
             TierDistribution = distribution
         });
+    }
+
+    private async Task<IList<DailyRevenueDto>> BuildRevenueHistoryAsync(DateOnly toDate, int days)
+    {
+        var dayNames = new[] { "CN", "T2", "T3", "T4", "T5", "T6", "T7" };
+        var result = new List<DailyRevenueDto>();
+        for (var i = days - 1; i >= 0; i--)
+        {
+            var d = toDate.AddDays(-i);
+            var start = d.ToDateTime(TimeOnly.MinValue);
+            var end = start.AddDays(1);
+            var rev = await _db.Bookings
+                .Where(b => b.Status == BookingStatus.Completed && b.CompletedAt >= start && b.CompletedAt < end)
+                .SumAsync(b => (decimal?)b.FinalPrice) ?? 0m;
+            result.Add(new DailyRevenueDto { Day = dayNames[(int)d.DayOfWeek], Value = rev });
+        }
+        return result;
     }
 
     private async Task<decimal> CalculateSlotUtilisationAsync(DateTime dayStart, DateTime dayEnd)

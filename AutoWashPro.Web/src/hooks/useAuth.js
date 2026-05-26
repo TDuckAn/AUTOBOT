@@ -1,18 +1,25 @@
 import { jwtDecode } from 'jwt-decode'
 
 const TOKEN_KEY = 'aw_token'
+const DISPLAY_KEY = 'aw_display'
 const ROLE_CLAIM = 'http://schemas.microsoft.com/ws/2008/06/identity/claims/role'
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY)
 }
 
-export function setToken(jwt) {
+export function setToken(jwt, displayName = '') {
   localStorage.setItem(TOKEN_KEY, jwt)
+  if (displayName) localStorage.setItem(DISPLAY_KEY, displayName)
 }
 
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(DISPLAY_KEY)
+}
+
+export function getDisplayName() {
+  return localStorage.getItem(DISPLAY_KEY) ?? ''
 }
 
 export function getRole() {

@@ -1,5 +1,15 @@
 export function PageContainer({ children, style }) {
-  return <div style={{ padding: 24, maxWidth: 1220, ...style }}>{children}</div>
+  return (
+    <div style={{
+      width: '100%',
+      maxWidth: 'min(1760px, calc(100vw - 48px))',
+      margin: '0 auto',
+      padding: 'clamp(20px, 2vw, 32px)',
+      ...style,
+    }}>
+      {children}
+    </div>
+  )
 }
 
 export function Th({ children, w }) {

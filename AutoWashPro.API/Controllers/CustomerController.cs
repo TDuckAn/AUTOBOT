@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using AutoWashPro.BLL.DTOs.Customer;
+using AutoWashPro.BLL.DTOs.Voucher;
 using AutoWashPro.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -12,10 +13,12 @@ namespace AutoWashPro.API.Controllers;
 public class CustomerController(
     ICustomerService customerService,
     ILoyaltyService loyaltyService,
+    IVoucherService voucherService,
     ILogger<CustomerController> logger) : ControllerBase
 {
     private readonly ICustomerService _customerService = customerService;
     private readonly ILoyaltyService _loyaltyService = loyaltyService;
+    private readonly IVoucherService _voucherService = voucherService;
     private readonly ILogger<CustomerController> _logger = logger;
 
     [HttpGet]
@@ -112,6 +115,24 @@ public class CustomerController(
         }
 
         var result = await _customerService.GetNotificationsAsync(customerId.Value, page, pageSize);
+        return result.IsSuccess ? Ok(result.Value) : BadRequest(result.Error);
+    }
+
+    [HttpGet("vouchers")]
+    public async Task<IActionResult> GetMyVouchers()
+    {
+        var customerId = GetPrincipalId();
+        if (customerId is null) return Unauthorized();
+        var vouchers = await _voucherService.GetCustomerVouchersAsync(customerId.Value);
+        return Ok(vouchers);
+    }
+
+    [HttpPost("redeem")]
+    public async Task<IActionResult> RedeemVoucher(RedeemVoucherRequestDto request)
+    {
+        var customerId = GetPrincipalId();
+        if (customerId is null) return Unauthorized();
+        var result = await _voucherService.RedeemAsync(customerId.Value, request.VoucherRuleId);
         return result.IsSuccess ? Ok(result.Value) : BadRequest(result.Error);
     }
 

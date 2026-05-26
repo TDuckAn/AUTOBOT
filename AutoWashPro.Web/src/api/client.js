@@ -13,8 +13,8 @@ client.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('aw_token')
-      const path = window.location.pathname.startsWith('/admin') ? '/admin/login' : '/staff/login'
-      window.location.href = path
+      localStorage.removeItem('aw_display')
+      window.location.href = '/login'
     }
     return Promise.reject(error)
   },

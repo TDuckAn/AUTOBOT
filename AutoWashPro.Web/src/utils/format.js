@@ -14,10 +14,10 @@ export const toLocalDateTimeValue = (date = new Date()) => {
 
 export const formatTime = (value) => {
   if (!value) return '--:--'
-  return new Date(value).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+  return new Date(value).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })
 }
 
 export const formatDate = (value) => {
   if (!value) return ''
-  return new Date(value).toLocaleDateString('vi-VN')
+  return new Date(value).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })
 }

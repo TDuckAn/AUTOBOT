@@ -5,6 +5,11 @@ export async function listServices(params = {}) {
   return data
 }
 
+export async function listAdminServices(params = {}) {
+  const { data } = await client.get('/admin/services', { params: { page: 1, pageSize: 100, ...params } })
+  return data
+}
+
 export async function listPricing(serviceId, params = {}) {
   const { data } = await client.get(`/services/${serviceId}/pricing`, { params: { page: 1, pageSize: 100, ...params } })
   return data
