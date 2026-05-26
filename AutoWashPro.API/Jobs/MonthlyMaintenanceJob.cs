@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
 using System.Data;
-using AutoWashPro.API.Data;
-using AutoWashPro.API.Data.Entities;
-using AutoWashPro.API.Data.Entities.Enums;
+using AutoWashPro.DAL.Data;
+using AutoWashPro.DAL.Data.Entities;
+using AutoWashPro.DAL.Data.Entities.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace AutoWashPro.API.Jobs;

@@ -1,6 +1,7 @@
-using AutoWashPro.API.Data;
-using AutoWashPro.API.DTOs.Admin;
-using AutoWashPro.API.DTOs.Booking;
+using AutoWashPro.DAL.Data;
+using AutoWashPro.DAL.Data.Entities;
+using AutoWashPro.BLL.DTOs.Admin;
+using AutoWashPro.BLL.DTOs.Booking;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -90,7 +91,7 @@ public class AdminCustomerController(
         return Ok(ToDto(customer));
     }
 
-    private static AdminCustomerDto ToDto(Data.Entities.Customer customer)
+    private static AdminCustomerDto ToDto(Customer customer)
     {
         return new AdminCustomerDto
         {

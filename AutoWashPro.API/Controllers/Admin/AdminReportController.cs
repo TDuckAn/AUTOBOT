@@ -1,6 +1,6 @@
-using AutoWashPro.API.Data;
-using AutoWashPro.API.Data.Entities.Enums;
-using AutoWashPro.API.DTOs.Admin;
+using AutoWashPro.DAL.Data;
+using AutoWashPro.DAL.Data.Entities.Enums;
+using AutoWashPro.BLL.DTOs.Admin;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;

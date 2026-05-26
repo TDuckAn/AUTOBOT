@@ -100,14 +100,15 @@ WHERE status NOT IN ('Cancelled')
 ## Phase Status (copy from PLAN.md §5 — keep in sync)
 | Phase | Status |
 |-------|--------|
-| 0 — Foundation | ⬜ |
-| 1 — Auth | ⬜ |
-| 2 — Service Catalogue | ⬜ |
-| 3 — Booking Engine | ⬜ |
-| 4 — Checkout & Loyalty | ⬜ |
-| 5 — Admin Config & Reports | ⬜ |
-| 6 — Background Jobs | ⬜ |
-| 7 — Quality & Polish | ⬜ |
+| 0 — Foundation | ✅ Completed |
+| 1 — Auth | ✅ Completed |
+| 2 — Service Catalogue | ✅ Completed |
+| 3 — Booking Engine | ✅ Completed |
+| 4 — Checkout & Loyalty | ✅ Completed |
+| 5 — Admin Config & Reports | ✅ Completed |
+| 6 — Background Jobs | ✅ Completed |
+| 7 — Quality & Polish | ✅ Completed |
+| 8 — 3-Layer Refactor | ✅ Completed |
 
 ---
 

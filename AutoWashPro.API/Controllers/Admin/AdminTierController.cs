@@ -1,6 +1,7 @@
-using AutoWashPro.API.Data;
-using AutoWashPro.API.DTOs.Admin;
-using AutoWashPro.API.DTOs.Booking;
+using AutoWashPro.DAL.Data;
+using AutoWashPro.DAL.Data.Entities;
+using AutoWashPro.BLL.DTOs.Admin;
+using AutoWashPro.BLL.DTOs.Booking;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -81,7 +82,7 @@ public class AdminTierController(
         return Ok(ToDto(tier));
     }
 
-    private static TierConfigDto ToDto(Data.Entities.TierConfig tier)
+    private static TierConfigDto ToDto(TierConfig tier)
     {
         return new TierConfigDto
         {

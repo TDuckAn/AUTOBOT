@@ -1,5 +1,5 @@
-using AutoWashPro.API.DTOs.Auth;
-using AutoWashPro.API.Services.Interfaces;
+using AutoWashPro.BLL.DTOs.Auth;
+using AutoWashPro.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AutoWashPro.API.Controllers;

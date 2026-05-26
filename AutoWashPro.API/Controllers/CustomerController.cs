@@ -1,6 +1,6 @@
 using System.Security.Claims;
-using AutoWashPro.API.DTOs.Customer;
-using AutoWashPro.API.Services.Interfaces;
+using AutoWashPro.BLL.DTOs.Customer;
+using AutoWashPro.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 

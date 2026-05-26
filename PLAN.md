@@ -1,9 +1,9 @@
 # AutoWash Pro — Master Build Plan
 > **Stack:** React + ASP.NET Core 9 Web API + SQL Server + EF Core 9  
 > **Claude:** Plans each phase, reviews decisions, resolves ambiguity  
-> **Codex:** Implements each phase following CODEX.md  
+> **Codex:** Implements each phase following AGENTS.md  
 > **Copilot:** Assists in-editor following AGENT.md  
-> **Context files:** CLAUDE.md · CODEX.md · AGENT.md (load at session start to restore context)
+> **Context files:** CLAUDE.md · AGENTS.md · AGENT.md (load at session start to restore context)
 
 ---
 
@@ -42,7 +42,7 @@
 
 ### ✅ Good — Keep As-Is
 
-- Single monolith (correct for 10-week timeline)  
+- 3-project solution: API (presentation) · BLL (business logic) · DAL (data access)  
 - EF Core Code-First, no raw SQL except documented performance queries  
 - `Result<T>` pattern — services never throw for business rule violations  
 - Append-only `POINTS_LEDGER` (BR-09)  
@@ -56,7 +56,7 @@
 
 | Decision | Choice | Reason |
 |----------|--------|--------|
-| Project type | Single ASP.NET Core Web API project | 10-week timeline; clean layer separation allows future extraction |
+| Project structure | 3-project solution: **AutoWashPro.DAL** (entities, DbContext, migrations) · **AutoWashPro.BLL** (services, interfaces, DTOs, common) · **AutoWashPro.API** (controllers, middleware, jobs, Program.cs) | Clear layer boundaries; API → BLL → DAL dependency chain |
 | ORM | EF Core 9 Code-First | Migrations managed; no raw SQL except performance-critical queries |
 | Auth | JWT Bearer, 1440 min expiry | Stateless; two token types: Customer + SYSTEM_USER |
 | Capacity locking | `IsolationLevel.Serializable` transaction | Prevents phantom reads during concurrent booking |
@@ -222,13 +222,140 @@
 
 ---
 
+### Phase 8 — 3-Layer Architecture Refactor
+
+**Goal:** Break the monolithic `AutoWashPro.API` into three proper projects following a strict API → BLL → DAL dependency chain. All existing functionality must continue to work after the move.
+
+#### Layer Responsibilities
+
+| Project | Contains | References |
+| --- | --- | --- |
+| `AutoWashPro.DAL` | Entities, Enums, `AppDbContext`, Migrations | EF Core SqlServer, EF Core Tools |
+| `AutoWashPro.BLL` | Services, Service Interfaces, DTOs, `Common/` (Result, AppConstants, Extensions) | DAL project, BCrypt.Net-Next |
+| `AutoWashPro.API` | Controllers, Middleware, Jobs, `Program.cs`, `appsettings*.json` | BLL project, JwtBearer, Swashbuckle |
+
+#### Tasks
+
+##### Step 1 — Register both new projects in the solution
+
+```sh
+# Run from the directory containing AutoWashPro.API.sln
+dotnet sln add ../AutoWashPro.BLL/AutoWashPro.BLL.csproj
+dotnet sln add ../AutoWashPro.DAL/AutoWashPro.DAL.csproj
+```
+
+##### Step 2 — Add NuGet packages to the correct projects
+
+- `AutoWashPro.DAL.csproj`: add `Microsoft.EntityFrameworkCore.SqlServer` v9.\*, `Microsoft.EntityFrameworkCore.Tools` v9.\*
+- `AutoWashPro.BLL.csproj`: add `BCrypt.Net-Next` v4.\*
+- `AutoWashPro.API.csproj`: keep `Microsoft.AspNetCore.Authentication.JwtBearer` v9.\*, `Swashbuckle.AspNetCore` v6.\*; **remove** EF Core packages and BCrypt (they live in DAL/BLL now)
+
+##### Step 3 — Add project-to-project references
+
+- `AutoWashPro.BLL.csproj`: `<ProjectReference Include="..\AutoWashPro.DAL\AutoWashPro.DAL.csproj" />`
+- `AutoWashPro.API.csproj`: `<ProjectReference Include="..\AutoWashPro.BLL\AutoWashPro.BLL.csproj" />`
+- DAL is transitively available in API through BLL — no direct API → DAL reference needed
+
+##### Step 4 — Move files from API into DAL
+
+Move the entire `Data/` folder into `AutoWashPro.DAL/`:
+
+```text
+AutoWashPro.DAL/
+├── Data/
+│   ├── AppDbContext.cs
+│   ├── Entities/
+│   │   ├── Customer.cs, Vehicle.cs, Service.cs, ServicePricing.cs
+│   │   ├── Booking.cs, PointsLedger.cs, TierConfig.cs, Promotion.cs
+│   │   ├── SystemUser.cs, Notification.cs, SystemConfig.cs
+│   │   └── Enums/
+│   │       ├── BookingStatus.cs, LedgerEntryType.cs, RewardType.cs
+│   │       └── NotificationType.cs, SystemUserRole.cs
+│   └── Migrations/     (all existing migration files)
+```
+
+Update all namespaces: `AutoWashPro.API.Data.*` → `AutoWashPro.DAL.Data.*`
+
+##### Step 5 — Move files from API into BLL
+
+Move `Services/`, `Common/`, and `DTOs/` into `AutoWashPro.BLL/`:
+
+```text
+AutoWashPro.BLL/
+├── Services/
+│   ├── Interfaces/   (all IXxxService.cs files)
+│   └── (all XxxService.cs implementation files)
+├── DTOs/
+│   └── Auth/, Booking/, Checkout/, Customer/, Service/, Admin/
+└── Common/
+    ├── Result.cs, AppConstants.cs
+    └── Extensions/DateTimeExtensions.cs
+```
+
+Update all namespaces:
+
+- `AutoWashPro.API.Services.*` → `AutoWashPro.BLL.Services.*`
+- `AutoWashPro.API.DTOs.*` → `AutoWashPro.BLL.DTOs.*`
+- `AutoWashPro.API.Common.*` → `AutoWashPro.BLL.Common.*`
+
+##### Step 6 — What stays in API (no move needed)
+
+```text
+AutoWashPro.API/
+├── Controllers/       (all controllers — update using statements only)
+├── Middleware/        (ExceptionHandlingMiddleware, RequestLoggingMiddleware)
+├── Jobs/              (MonthlyMaintenanceJob — registered as IHostedService in API)
+├── Program.cs         (update using statements; service registrations unchanged)
+├── appsettings*.json
+└── Properties/launchSettings.json
+```
+
+##### Step 7 — Update all `using` statements
+
+Every file that previously referenced `AutoWashPro.API.Data`, `AutoWashPro.API.Services`, `AutoWashPro.API.DTOs`, or `AutoWashPro.API.Common` must be updated to the new namespaces. Affected files: all Controllers, Middleware, Jobs, and Program.cs.
+
+##### Step 8 — Update EF Core migration commands
+
+DbContext is now in DAL; startup project remains API. Run from inside `AutoWashPro.API/`:
+
+```sh
+dotnet ef migrations add <MigrationName> --project ../AutoWashPro.DAL/AutoWashPro.DAL.csproj --startup-project AutoWashPro.API.csproj
+dotnet ef database update --project ../AutoWashPro.DAL/AutoWashPro.DAL.csproj --startup-project AutoWashPro.API.csproj
+```
+
+##### Step 9 — Delete placeholder files
+
+- Delete `AutoWashPro.BLL/Class1.cs`
+- Delete `AutoWashPro.DAL/Class1.cs`
+
+##### Step 10 — Update AGENTS.md
+
+- Replace the single-project folder structure with the 3-project layout above
+- Remove the "Do NOT create additional projects" rule (it no longer applies)
+- Update NuGet package section to show which packages belong to which project
+- Update EF migration commands to use `--project` and `--startup-project` flags
+
+##### Step 11 — Build and smoke test
+
+```sh
+dotnet build   # run from solution root — must have 0 errors, 3 projects built
+dotnet run     # run from AutoWashPro.API/ — Swagger UI must load at /swagger
+```
+
+Verify at least one endpoint per layer is reachable (e.g., `GET /api/services` exercises the full API → BLL → DAL chain).
+
+**Deliverable:** Solution builds cleanly with 3 projects. `dotnet run` starts without error. All 31 endpoints respond correctly. EF migration commands work with `--project`/`--startup-project` flags.
+
+---
+
 ## SECTION 4 — Supporting Files
 
 | File | Purpose | Load when |
-|------|---------|----------|
+| --- | --- | --- |
 | `CLAUDE.md` | Planning context, decisions, issue tracker, phase status | Claude starts a new session |
-| `CODEX.md` | Entity specs, conventions, patterns, EF config rules | Codex begins implementing a phase |
-| `AGENT.md` | Quick codebase reference for in-editor autocomplete | Copilot is active in any source file |
+| `AGENTS.md` | Entity specs, conventions, patterns, EF config rules, 3-layer structure | Codex begins implementing a phase |
+| `.github/copilot-instructions.md` | Quick codebase reference for in-editor autocomplete | Copilot is active in any source file (auto-loaded) |
+| `AGENT.md` | Same as above — kept for manual reference | When not using Copilot auto-load |
 
 ---
 
@@ -246,3 +373,4 @@
 | 5 — Admin Config & Reports | ✅ Completed | Admin tier/promotion/customer configuration and operational report endpoints implemented |
 | 6 — Background Jobs | ✅ Completed | Monthly maintenance job, point expiry, tier review, persisted run flag, and near-expiry notifications implemented |
 | 7 — Quality & Polish | ✅ Completed | Request logging, Swagger bearer docs, XML docs, pagination audit, production config template, and validation polish implemented |
+| 8 — 3-Layer Refactor | ✅ Completed | Data moved to DAL, Services/DTOs/Common moved to BLL, project refs/namespaces/EF commands/AGENTS.md updated, solution builds cleanly; API keeps EF Design as startup-project tooling only |
