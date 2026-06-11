@@ -1,7 +1,7 @@
 using AutoWashPro.DAL.Data;
 using AutoWashPro.DAL.Data.Entities;
+using AutoWashPro.BLL.Common.Extensions;
 using AutoWashPro.BLL.DTOs.Admin;
-using AutoWashPro.BLL.DTOs.Booking;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -15,7 +15,6 @@ public class AdminCustomerController(
     AppDbContext db,
     ILogger<AdminCustomerController> logger) : ControllerBase
 {
-    private const int MaxPageSize = 100;
     private readonly AppDbContext _db = db;
     private readonly ILogger<AdminCustomerController> _logger = logger;
 
@@ -26,9 +25,6 @@ public class AdminCustomerController(
         [FromQuery] string? search = null,
         [FromQuery] Guid? tierId = null)
     {
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, MaxPageSize);
-
         var query = _db.Customers
             .AsNoTracking()
             .Include(customer => customer.TierConfig)
@@ -47,21 +43,8 @@ public class AdminCustomerController(
             query = query.Where(customer => customer.TierId == tierId.Value);
         }
 
-        var totalCount = await query.CountAsync();
-        var customers = await query
-            .OrderBy(customer => customer.FullName)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(customer => ToDto(customer))
-            .ToListAsync();
-
-        return Ok(new PagedResultDto<AdminCustomerDto>
-        {
-            Items = customers,
-            Page = page,
-            PageSize = pageSize,
-            TotalCount = totalCount
-        });
+        var ordered = query.OrderBy(customer => customer.FullName);
+        return Ok(await ordered.ToPagedResultAsync(page, pageSize, ToDto));
     }
 
     [HttpPut("{id:guid}/tier")]

@@ -4,6 +4,7 @@ using AutoWashPro.DAL.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AutoWashPro.DAL.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260611163757_AddVehicleTypeForeignKeys")]
+    partial class AddVehicleTypeForeignKeys
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -103,8 +106,6 @@ namespace AutoWashPro.DAL.Data.Migrations
                     b.HasIndex("PromotionId");
 
                     b.HasIndex("VehicleId");
-
-                    b.HasIndex("ScheduledAt", "Status");
 
                     b.ToTable("Bookings", t =>
                         {
@@ -292,9 +293,7 @@ namespace AutoWashPro.DAL.Data.Migrations
 
                     b.HasIndex("BookingId");
 
-                    b.HasIndex("ExpiryDate");
-
-                    b.HasIndex("CustomerId", "Type");
+                    b.HasIndex("CustomerId");
 
                     b.ToTable("PointsLedgers");
                 });

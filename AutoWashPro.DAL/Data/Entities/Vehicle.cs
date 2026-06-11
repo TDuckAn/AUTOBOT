@@ -5,8 +5,9 @@ public class Vehicle
     public Guid VehicleId { get; set; }
     public Guid CustomerId { get; set; }
     public string LicensePlate { get; set; } = string.Empty;
-    public string VehicleType { get; set; } = string.Empty;
+    public Guid VehicleTypeId { get; set; }
     public string? Brand { get; set; }
     public DateTime CreatedAt { get; set; }
     public Customer Customer { get; set; } = null!;
+    public VehicleType VehicleType { get; set; } = null!;
 }

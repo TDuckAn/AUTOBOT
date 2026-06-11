@@ -7,7 +7,7 @@ import { CustomerShell } from '../../components/layout/CustomerShell.jsx'
 import { EmptyState, Field, PageContainer } from '../../components/ui.jsx'
 import { formatDate } from '../../utils/format.js'
 
-const blankForm = { licensePlate: '', vehicleType: '', brand: '' }
+const blankForm = { licensePlate: '', vehicleTypeId: '', brand: '' }
 
 export function CustomerVehicles() {
   const [vehicles, setVehicles] = useState([])
@@ -25,7 +25,7 @@ export function CustomerVehicles() {
       const [vehicleData, types] = await Promise.all([getVehicles(), listVehicleTypes()])
       setVehicles(unwrapPaged(vehicleData))
       setVehicleTypes(types)
-      if (types[0]) setForm((f) => ({ ...f, vehicleType: f.vehicleType || types[0].name }))
+      if (types[0]) setForm((f) => ({ ...f, vehicleTypeId: f.vehicleTypeId || types[0].vehicleTypeId }))
     } catch (err) {
       setError(getApiError(err, 'Không tải được danh sách xe.'))
     } finally {
@@ -43,7 +43,7 @@ export function CustomerVehicles() {
     try {
       await addVehicle({
         licensePlate: form.licensePlate.trim().toUpperCase(),
-        vehicleType: form.vehicleType,
+        vehicleTypeId: form.vehicleTypeId,
         brand: form.brand.trim() || undefined,
       })
       setMessage('Đã thêm xe thành công.')
@@ -102,12 +102,12 @@ export function CustomerVehicles() {
               </Field>
               <Field label="Loại xe">
                 <select
-                  className="aw-input" value={form.vehicleType}
-                  onChange={(e) => setForm({ ...form, vehicleType: e.target.value })}
+                  className="aw-input" value={form.vehicleTypeId}
+                  onChange={(e) => setForm({ ...form, vehicleTypeId: e.target.value })}
                   style={{ height: 38 }} required
                 >
                   {vehicleTypes.map((vt) => (
-                    <option key={vt.vehicleTypeId} value={vt.name}>{vt.name}</option>
+                    <option key={vt.vehicleTypeId} value={vt.vehicleTypeId}>{vt.name}</option>
                   ))}
                 </select>
               </Field>
@@ -154,7 +154,7 @@ export function CustomerVehicles() {
                   </button>
                 </div>
                 <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'Geist Mono',monospace", marginBottom: 4 }}>{v.licensePlate}</div>
-                <div style={{ fontSize: 12, color: 'var(--ink-500)', marginBottom: 2 }}>{v.vehicleType}{v.brand ? ` · ${v.brand}` : ''}</div>
+                <div style={{ fontSize: 12, color: 'var(--ink-500)', marginBottom: 2 }}>{v.vehicleTypeName}{v.brand ? ` · ${v.brand}` : ''}</div>
                 <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 6 }}>Thêm vào: {formatDate(v.createdAt)}</div>
               </div>
             ))}

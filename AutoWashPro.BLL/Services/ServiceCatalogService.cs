@@ -1,4 +1,5 @@
 using AutoWashPro.BLL.Common;
+using AutoWashPro.BLL.Common.Extensions;
 using AutoWashPro.DAL.Data;
 using AutoWashPro.BLL.DTOs.Booking;
 using AutoWashPro.BLL.DTOs.Service;
@@ -13,7 +14,6 @@ public class ServiceCatalogService(
     AppDbContext db,
     ILogger<ServiceCatalogService> logger) : IServiceCatalogService
 {
-    private const int MaxPageSize = 100;
     private readonly AppDbContext _db = db;
     private readonly ILogger<ServiceCatalogService> _logger = logger;
 
@@ -24,7 +24,7 @@ public class ServiceCatalogService(
             .Where(service => service.IsActive)
             .OrderBy(service => service.Name);
 
-        return Result<PagedResultDto<ServiceDto>>.Ok(await ToPagedResultAsync(query, page, pageSize, ToServiceDto));
+        return Result<PagedResultDto<ServiceDto>>.Ok(await query.ToPagedResultAsync(page, pageSize, ToServiceDto));
     }
 
     public async Task<Result<PagedResultDto<ServiceDto>>> ListAllServicesAsync(int page, int pageSize)
@@ -34,7 +34,7 @@ public class ServiceCatalogService(
             .OrderBy(service => service.IsActive ? 0 : 1)
             .ThenBy(service => service.Name);
 
-        return Result<PagedResultDto<ServiceDto>>.Ok(await ToPagedResultAsync(query, page, pageSize, ToServiceDto));
+        return Result<PagedResultDto<ServiceDto>>.Ok(await query.ToPagedResultAsync(page, pageSize, ToServiceDto));
     }
 
     public async Task<Result<PagedResultDto<ServicePricingDto>>> GetPricingByServiceAsync(Guid serviceId, int page, int pageSize)
@@ -50,10 +50,11 @@ public class ServiceCatalogService(
 
         var query = _db.ServicePricings
             .AsNoTracking()
+            .Include(item => item.VehicleType)
             .Where(item => item.ServiceId == serviceId && item.IsActive)
-            .OrderBy(item => item.VehicleType);
+            .OrderBy(item => item.VehicleType.Name);
 
-        return Result<PagedResultDto<ServicePricingDto>>.Ok(await ToPagedResultAsync(query, page, pageSize, ToPricingDto));
+        return Result<PagedResultDto<ServicePricingDto>>.Ok(await query.ToPagedResultAsync(page, pageSize, ToPricingDto));
     }
 
     public async Task<Result<ServiceDto>> CreateServiceAsync(CreateServiceDto request)
@@ -121,9 +122,15 @@ public class ServiceCatalogService(
             return Result<ServicePricingDto>.Fail(validationError);
         }
 
-        var vehicleType = request.VehicleType.Trim();
+        var vehicleType = await _db.VehicleTypes
+            .SingleOrDefaultAsync(vt => vt.VehicleTypeId == request.VehicleTypeId && vt.IsActive);
+        if (vehicleType is null)
+        {
+            return Result<ServicePricingDto>.Fail("Vehicle type was not found.");
+        }
+
         var duplicateExists = await _db.ServicePricings.AnyAsync(pricing =>
-            pricing.ServiceId == serviceId && pricing.VehicleType == vehicleType);
+            pricing.ServiceId == serviceId && pricing.VehicleTypeId == request.VehicleTypeId);
         if (duplicateExists)
         {
             return Result<ServicePricingDto>.Fail("Pricing for this vehicle type already exists.");
@@ -133,6 +140,7 @@ public class ServiceCatalogService(
         {
             PricingId = Guid.NewGuid(),
             ServiceId = serviceId,
+            VehicleTypeId = vehicleType.VehicleTypeId,
             VehicleType = vehicleType,
             Price = request.Price,
             DurationMinutes = request.DurationMinutes,
@@ -162,16 +170,30 @@ public class ServiceCatalogService(
             return Result<ServicePricingDto>.Fail(validationError);
         }
 
-        var vehicleType = request.VehicleType.Trim();
-        var duplicateExists = await _db.ServicePricings.AnyAsync(entity =>
-            entity.ServiceId == serviceId
-            && entity.PricingId != pricingId
-            && entity.VehicleType == vehicleType);
-        if (duplicateExists)
+        var vehicleType = await _db.VehicleTypes
+            .SingleOrDefaultAsync(vt => vt.VehicleTypeId == request.VehicleTypeId && vt.IsActive);
+        if (vehicleType is null)
         {
-            return Result<ServicePricingDto>.Fail("Pricing for this vehicle type already exists.");
+            return Result<ServicePricingDto>.Fail("Vehicle type was not found.");
         }
 
+        // Only guard against collisions when the vehicle type is actually being
+        // changed. Editing the price/duration of a row that keeps its current vehicle
+        // type must not be blocked by a pre-existing duplicate sibling (legacy data
+        // may already contain duplicate (ServiceId, VehicleTypeId) pairs — see D12).
+        if (pricing.VehicleTypeId != request.VehicleTypeId)
+        {
+            var duplicateExists = await _db.ServicePricings.AnyAsync(entity =>
+                entity.ServiceId == serviceId
+                && entity.PricingId != pricingId
+                && entity.VehicleTypeId == request.VehicleTypeId);
+            if (duplicateExists)
+            {
+                return Result<ServicePricingDto>.Fail("Pricing for this vehicle type already exists.");
+            }
+        }
+
+        pricing.VehicleTypeId = vehicleType.VehicleTypeId;
         pricing.VehicleType = vehicleType;
         pricing.Price = request.Price;
         pricing.DurationMinutes = request.DurationMinutes;
@@ -211,35 +233,12 @@ public class ServiceCatalogService(
         {
             PricingId = pricing.PricingId,
             ServiceId = pricing.ServiceId,
-            VehicleType = pricing.VehicleType,
+            VehicleTypeId = pricing.VehicleTypeId,
+            VehicleTypeName = pricing.VehicleType?.Name ?? string.Empty,
             Price = pricing.Price,
             DurationMinutes = pricing.DurationMinutes,
             IsActive = pricing.IsActive,
             CreatedAt = pricing.CreatedAt
-        };
-    }
-
-    private static async Task<PagedResultDto<TDto>> ToPagedResultAsync<TEntity, TDto>(
-        IQueryable<TEntity> query,
-        int page,
-        int pageSize,
-        Func<TEntity, TDto> map)
-    {
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, MaxPageSize);
-
-        var totalCount = await query.CountAsync();
-        var items = await query
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync();
-
-        return new PagedResultDto<TDto>
-        {
-            Items = items.Select(map).ToList(),
-            Page = page,
-            PageSize = pageSize,
-            TotalCount = totalCount
         };
     }
 }

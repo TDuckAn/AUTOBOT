@@ -77,13 +77,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             entity.HasKey(vehicle => vehicle.VehicleId);
             entity.Property(vehicle => vehicle.LicensePlate).HasMaxLength(30).IsRequired();
-            entity.Property(vehicle => vehicle.VehicleType).HasMaxLength(50).IsRequired();
             entity.Property(vehicle => vehicle.Brand).HasMaxLength(100);
             entity.Property(vehicle => vehicle.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
             entity.HasIndex(vehicle => vehicle.LicensePlate).IsUnique();
             entity.HasOne(vehicle => vehicle.Customer)
                 .WithMany(customer => customer.Vehicles)
                 .HasForeignKey(vehicle => vehicle.CustomerId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(vehicle => vehicle.VehicleType)
+                .WithMany()
+                .HasForeignKey(vehicle => vehicle.VehicleTypeId)
                 .OnDelete(DeleteBehavior.NoAction);
         });
     }
@@ -105,16 +108,23 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<ServicePricing>(entity =>
         {
             entity.HasKey(pricing => pricing.PricingId);
-            entity.Property(pricing => pricing.VehicleType).HasMaxLength(50).IsRequired();
             entity.Property(pricing => pricing.Price).HasPrecision(18, 2);
             entity.Property(pricing => pricing.IsActive).HasDefaultValue(true);
             entity.Property(pricing => pricing.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
             entity.ToTable(table => table.HasCheckConstraint(
                 "CK_ServicePricing_DurationMinutes_Positive",
                 "[DurationMinutes] > 0"));
+            // Non-unique: legacy data can contain more than one pricing row per
+            // (service, vehicle type); uniqueness for new rows is enforced in
+            // ServiceCatalogService. The index still accelerates lookups + FK joins.
+            entity.HasIndex(pricing => new { pricing.ServiceId, pricing.VehicleTypeId });
             entity.HasOne(pricing => pricing.Service)
                 .WithMany(service => service.Pricings)
                 .HasForeignKey(pricing => pricing.ServiceId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(pricing => pricing.VehicleType)
+                .WithMany()
+                .HasForeignKey(pricing => pricing.VehicleTypeId)
                 .OnDelete(DeleteBehavior.NoAction);
         });
     }
@@ -135,6 +145,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.ToTable(table => table.HasCheckConstraint(
                 "CK_Booking_WalkinContact_WhenNoCustomer",
                 "([CustomerId] IS NOT NULL) OR ([WalkinPhone] IS NOT NULL AND [WalkinLicensePlate] IS NOT NULL)"));
+            // Accelerates capacity-overlap, queue, and admin date-range queries.
+            entity.HasIndex(booking => new { booking.ScheduledAt, booking.Status });
             entity.HasOne(booking => booking.Customer)
                 .WithMany(customer => customer.Bookings)
                 .HasForeignKey(booking => booking.CustomerId)
@@ -171,6 +183,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(ledger => ledger.Note).HasMaxLength(500);
             entity.Property(ledger => ledger.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
             entity.Property(ledger => ledger.NearExpiryNotified).HasDefaultValue(false);
+            // Accelerates the monthly point-expiry aggregation and near-expiry scan.
+            entity.HasIndex(ledger => new { ledger.CustomerId, ledger.Type });
+            entity.HasIndex(ledger => ledger.ExpiryDate);
             entity.HasOne(ledger => ledger.Customer)
                 .WithMany(customer => customer.LedgerEntries)
                 .HasForeignKey(ledger => ledger.CustomerId)

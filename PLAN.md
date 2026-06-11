@@ -681,6 +681,42 @@ npm run dev        # must start at http://localhost:5173 with no console errors
 
 ---
 
+### Phase 10 — VehicleType FK Fix, Service & Performance Improvements
+
+**Goal:** Connect the orphaned `VehicleType` table via real foreign keys, and improve service/query/caching/frontend performance. Implemented directly by Claude at the user's explicit request (one-time exception to the Claude/Codex split).
+
+**10.1 — VehicleType foreign keys (the bug fix)**
+- `Vehicle.VehicleType` and `ServicePricing.VehicleType` were free-text `string` columns; the seeded `VehicleType` table was referenced by nothing.
+- Replaced both with `Guid VehicleTypeId` FK + `VehicleType` nav property; added FK config in `AppDbContext` (`ConfigureVehicle`, `ConfigureServicePricing`) with `DeleteBehavior.NoAction`.
+- Migration `AddVehicleTypeForeignKeys`: hand-edited for safe in-place migration — add nullable `VehicleTypeId`, backfill by matching the old string against `VehicleTypes.Name` (fallback to first seeded type), set NOT NULL, drop old columns, add FK + indexes. **Preserves existing data** (verified: 6 vehicles + 4 pricing rows, 0 orphans).
+- DTOs: `CreateVehicleDto`/`CreatePricingDto` take `VehicleTypeId`; `VehicleDto`/`ServicePricingDto` expose `VehicleTypeId` + `VehicleTypeName`; `BookingResponseDto.VehicleType` → `VehicleTypeName`.
+- Services validate `VehicleTypeId` exists/active; `Include(p => p.VehicleType)` where the name is projected.
+- Frontend (`AdminServices`, `CustomerVehicles`, `StaffWalkin`, `StaffQueue`, `StaffHistory`, `CustomerBookings`, `CustomerDashboard`) send `vehicleTypeId` and display `vehicleTypeName`.
+- The `(ServiceId, VehicleTypeId)` index is **non-unique** (D12): legacy data has duplicate pairs referenced by bookings; app-layer check still blocks new duplicates.
+
+**10.2 — DB indexes & query optimization**
+- Migration `AddPerformanceIndexes`: `Booking (ScheduledAt, Status)`, `PointsLedger (CustomerId, Type)`, `PointsLedger (ExpiryDate)`. (FK indexes on `Booking.CustomerId/PricingId` already existed.)
+- `BookingService` capacity checks (`IsRangeAvailableAsync`, `GetAvailabilityAsync`) rewritten from per-sub-slot `COUNT` queries to **one** query + in-memory concurrency calc — BR-01 semantics unchanged.
+- `MonthlyMaintenanceJob`: point-expiry loop now derives candidates from the ledger (skips customers with nothing to expire); tier review uses one grouped stats query + a single commit instead of 2–3 queries per customer.
+
+**10.3 — Caching & response compression**
+- `AddMemoryCache` + `CatalogCache` singleton (group eviction via `CancellationChangeToken`) caches services/pricing/vehicle-types/tiers; invalidated on every catalogue write.
+- `AddResponseCompression` (Brotli + Gzip, Fastest) — verified `Content-Encoding: br`.
+- `Cache-Control: public, max-age=30` on public `GET /api/services` + `/pricing` (not on the shared `/vehicle-types`, to avoid admin staleness after add/delete).
+- `VehicleTypeController.Delete` now guards against in-use types (FK would otherwise throw).
+
+**10.4 — Shared pagination helper**
+- `QueryableExtensions.ToPagedResultAsync(query, page, pageSize, map)` (Skip/Take in SQL, map in memory). Replaced duplicated pagination in `BookingService`, `ServiceCatalogService`, `CustomerService`, `PromotionService`, and `AdminCustomerController`.
+
+**10.5 — Frontend bundle & load performance**
+- `main.jsx`: all route pages `React.lazy` + `Suspense` (Login stays eager).
+- `vite.config.js`: `manualChunks` vendor split — recharts (360 KB) isolated to `vendor-charts`, only loaded on the admin dashboard.
+- `vehicleTypes.js`: module-level promise cache, invalidated on create/delete.
+
+**Deliverable:** Solution builds (3 projects, 0 errors); both migrations applied to the dev DB preserving data; runtime smoke tests pass (vehicle-types/services/pricing shapes, Brotli compression, Cache-Control, 401 on protected routes); frontend builds with split chunks; lint clean.
+
+---
+
 ## SECTION 4 — Supporting Files
 
 | File | Purpose | Load when |
@@ -708,3 +744,4 @@ npm run dev        # must start at http://localhost:5173 with no console errors
 | 7 — Quality & Polish | ✅ Completed | Request logging, Swagger bearer docs, XML docs, pagination audit, production config template, and validation polish implemented |
 | 8 — 3-Layer Refactor | ✅ Completed | Data moved to DAL, Services/DTOs/Common moved to BLL, project refs/namespaces/EF commands/AGENTS.md updated, solution builds cleanly; API keeps EF Design as startup-project tooling only |
 | 9 — Frontend (Staff & Admin) | ✅ Completed | React/Vite frontend scaffolded in AutoWashPro.Web, prototype CSS copied, staff/admin routes wired to API clients, lint/build/dev-server checks pass |
+| 10 — VehicleType FK & Performance | ✅ Completed | VehicleType connected via FK (in-place data migration); capacity/maintenance N+1 queries collapsed; memory cache + Brotli/Gzip compression; shared pagination helper; frontend route code-splitting + vendor chunks. Builds/migrations/smoke-tests/lint all pass |

@@ -115,7 +115,7 @@ export function StaffQueue() {
                       <StatusPill status={booking.status === 'Confirmed' ? 'queued' : booking.status?.toLowerCase()} />
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--ink-700)', fontWeight: 500 }}>{booking.serviceName}</div>
-                    <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 3, fontFamily: "'Geist Mono',monospace" }}>{booking.walkinLicensePlate ?? booking.vehicleType}</div>
+                    <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 3, fontFamily: "'Geist Mono',monospace" }}>{booking.walkinLicensePlate ?? booking.vehicleTypeName}</div>
                   </div>
                   <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
                     <div style={{ fontSize: 15, fontWeight: 800, fontFamily: "'Geist Mono',monospace" }}>{formatVND(booking.finalPrice)}</div>
@@ -144,11 +144,11 @@ export function StaffQueue() {
                 </div>
               </div>
               <div className="aw-scroll" style={{ flex: 1, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div className="aw-photo" style={{ height: 120 }}>{selected.walkinLicensePlate ?? selected.vehicleType}</div>
+                <div className="aw-photo" style={{ height: 120 }}>{selected.walkinLicensePlate ?? selected.vehicleTypeName}</div>
                 <div style={{ borderRadius: 6, border: '1px solid var(--border)', overflow: 'hidden' }}>
                   {[
                     ['Dịch vụ', selected.serviceName],
-                    ['Biển số / Loại xe', selected.walkinLicensePlate ?? selected.vehicleType],
+                    ['Biển số / Loại xe', selected.walkinLicensePlate ?? selected.vehicleTypeName],
                     ['Giờ vào', formatTime(selected.scheduledAt)],
                     ['Dự kiến xong', formatTime(selected.expectedEndAt)],
                     ['Trạng thái', selected.status === 'Confirmed' ? 'Đang chờ' : selected.status === 'Completed' ? 'Đã hoàn tất' : 'Đã huỷ'],

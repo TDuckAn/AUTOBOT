@@ -5,8 +5,7 @@ namespace AutoWashPro.BLL.DTOs.Service;
 public class CreatePricingDto
 {
     [Required]
-    [MaxLength(50)]
-    public string VehicleType { get; set; } = string.Empty;
+    public Guid VehicleTypeId { get; set; }
 
     [Range(0.01, 9999999999999999)]
     public decimal Price { get; set; }

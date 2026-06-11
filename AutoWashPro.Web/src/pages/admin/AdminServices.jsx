@@ -19,8 +19,8 @@ export function AdminServices() {
   const [selected, setSelected] = useState(null)
   const [form, setForm] = useState(blankService)
   const [pricing, setPricing] = useState([])
-  // Create-mode inline pricing: { [vehicleTypeName]: { durationMinutes, price } }
-  const [newServicePricing, setNewServicePricing] = useState({})
+  // Pricing edits (both create & edit mode): { [vehicleTypeId]: { durationMinutes, price } }
+  const [pricingDrafts, setPricingDrafts] = useState({})
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -40,14 +40,22 @@ export function AdminServices() {
     }
   }, [])
 
-  const refreshPricing = async (serviceId) => {
-    setPricing(unwrapPaged(await listPricing(serviceId)))
-  }
+  // Build the editable draft map for a service's pricing rows, one per vehicle type.
+  const draftsFromPricing = useCallback((rows) => Object.fromEntries(
+    vehicleTypes.map((vt) => {
+      const existing = rows.find((p) => p.vehicleTypeId === vt.vehicleTypeId)
+      return [vt.vehicleTypeId, existing
+        ? { durationMinutes: existing.durationMinutes, price: String(existing.price) }
+        : blankPricingEntry()]
+    }),
+  ), [vehicleTypes])
 
   const selectService = async (service) => {
     setSelected(service)
     setForm({ name: service.name, description: service.description ?? '', isActive: service.isActive })
-    setPricing(unwrapPaged(await listPricing(service.serviceId)))
+    const rows = unwrapPaged(await listPricing(service.serviceId))
+    setPricing(rows)
+    setPricingDrafts(draftsFromPricing(rows))
   }
 
   const refresh = async () => {
@@ -93,9 +101,37 @@ export function AdminServices() {
     setSelected(null)
     setForm(blankService)
     setPricing([])
-    setNewServicePricing(Object.fromEntries(vehicleTypes.map((vt) => [vt.name, blankPricingEntry()])))
+    setPricingDrafts(Object.fromEntries(vehicleTypes.map((vt) => [vt.vehicleTypeId, blankPricingEntry()])))
     setMessage('')
     setError('')
+  }
+
+  // Persist the service plus every price row that has a value. Existing rows whose
+  // price/duration changed are updated; vehicle types without a price yet are created.
+  const persistPricing = async (serviceId) => {
+    for (const vt of vehicleTypes) {
+      const existing = pricing.find((p) => p.vehicleTypeId === vt.vehicleTypeId) ?? null
+      const draft = pricingDrafts[vt.vehicleTypeId]
+        ?? (existing ? { durationMinutes: existing.durationMinutes, price: String(existing.price) } : null)
+      if (!draft) continue
+
+      const price = Number(draft.price)
+      if (draft.price === '' || !(price > 0)) continue
+
+      const payload = {
+        vehicleTypeId: vt.vehicleTypeId,
+        durationMinutes: Math.max(1, Number(draft.durationMinutes) || 1),
+        price,
+        isActive: existing ? existing.isActive : true,
+      }
+
+      if (existing) {
+        const changed = price !== existing.price || payload.durationMinutes !== existing.durationMinutes
+        if (changed) await updatePricing(serviceId, existing.pricingId, payload)
+      } else {
+        await createPricing(serviceId, payload)
+      }
+    }
   }
 
   const saveService = async (event) => {
@@ -107,21 +143,9 @@ export function AdminServices() {
         ? await updateService(selected.serviceId, form)
         : await createService(form)
 
-      // In create mode: persist any pricing rows that have a price filled in
-      if (!selected) {
-        const entries = Object.entries(newServicePricing)
-          .filter(([, v]) => v.price !== '' && Number(v.price) > 0)
-        for (const [vehicleType, { durationMinutes, price }] of entries) {
-          await createPricing(saved.serviceId, {
-            vehicleType,
-            durationMinutes: Math.max(1, Number(durationMinutes) || 1),
-            price: Number(price),
-            isActive: true,
-          })
-        }
-      }
+      await persistPricing(saved.serviceId)
 
-      setMessage(selected ? 'Đã cập nhật dịch vụ.' : 'Đã tạo dịch vụ.')
+      setMessage(selected ? 'Đã cập nhật dịch vụ và bảng giá.' : 'Đã tạo dịch vụ.')
       await refresh()
       await selectService(saved)
     } catch (err) {
@@ -220,54 +244,42 @@ export function AdminServices() {
                     <div style={{ fontSize: 13, fontWeight: 700 }}>Bảng giá theo loại xe</div>
 
                     {/* Column headers */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 1fr 36px', gap: 6, fontSize: 11, fontWeight: 600, color: 'var(--ink-500)', padding: '0 2px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 1fr', gap: 6, fontSize: 11, fontWeight: 600, color: 'var(--ink-500)', padding: '0 2px' }}>
                       <div>Loại xe</div>
                       <div>Thời gian</div>
                       <div>Giá (₫)</div>
-                      <div />
                     </div>
 
-                    {selected ? (
-                      // Edit mode: one row per vehicle type, pre-filled from existing pricing
-                      vehicleTypes.map((vt) => (
-                        <PricingRow
-                          key={vt.vehicleTypeId}
-                          vehicleType={vt.name}
-                          serviceId={selected.serviceId}
-                          existing={pricing.find((p) => p.vehicleType === vt.name) ?? null}
-                          onRefresh={() => refreshPricing(selected.serviceId)}
-                        />
-                      ))
-                    ) : (
-                      // Create mode: one editable row per vehicle type
-                      vehicleTypes.map((vt) => {
-                        const val = newServicePricing[vt.name] ?? blankPricingEntry()
-                        return (
-                          <div key={vt.vehicleTypeId} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 1fr 36px', gap: 6, alignItems: 'center' }}>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-700)', paddingLeft: 2 }}>{vt.name}</div>
-                            <input
-                              className="aw-input" type="number" min={1} max={1440}
-                              value={val.durationMinutes}
-                              onChange={(e) => setNewServicePricing((p) => ({ ...p, [vt.name]: { ...val, durationMinutes: e.target.value } }))}
-                              placeholder="Phút"
-                            />
-                            <input
-                              className="aw-input" type="number" min={0}
-                              value={val.price}
-                              onChange={(e) => setNewServicePricing((p) => ({ ...p, [vt.name]: { ...val, price: e.target.value } }))}
-                              placeholder="Chưa đặt giá"
-                            />
-                            <div />
+                    {vehicleTypes.map((vt) => {
+                      const existing = selected ? (pricing.find((p) => p.vehicleTypeId === vt.vehicleTypeId) ?? null) : null
+                      const val = pricingDrafts[vt.vehicleTypeId]
+                        ?? (existing ? { durationMinutes: existing.durationMinutes, price: String(existing.price) } : blankPricingEntry())
+                      return (
+                        <div key={vt.vehicleTypeId} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 1fr', gap: 6, alignItems: 'center' }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: existing || !selected ? 'var(--ink-700)' : 'var(--ink-400)', paddingLeft: 2 }}>
+                            {vt.name}
+                            {selected && !existing && <span style={{ fontSize: 10, fontWeight: 500, marginLeft: 6, color: 'var(--ink-300)' }}>chưa có giá</span>}
                           </div>
-                        )
-                      })
-                    )}
+                          <input
+                            className="aw-input" type="number" min={1} max={1440}
+                            value={val.durationMinutes}
+                            onChange={(e) => setPricingDrafts((p) => ({ ...p, [vt.vehicleTypeId]: { ...val, durationMinutes: e.target.value } }))}
+                            placeholder="Phút"
+                          />
+                          <input
+                            className="aw-input" type="number" min={0}
+                            value={val.price}
+                            onChange={(e) => setPricingDrafts((p) => ({ ...p, [vt.vehicleTypeId]: { ...val, price: e.target.value } }))}
+                            placeholder="Chưa đặt giá"
+                            title={val.price ? formatVND(val.price) : ''}
+                          />
+                        </div>
+                      )
+                    })}
 
-                    {!selected && (
-                      <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: -4 }}>
-                        Bỏ trống cột giá để bỏ qua loại xe đó khi tạo.
-                      </div>
-                    )}
+                    <div style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: -4 }}>
+                      Bỏ trống cột giá để bỏ qua loại xe đó. Nhấn “Lưu dịch vụ” để lưu cả giá.
+                    </div>
                   </>
                 )}
 
@@ -328,91 +340,11 @@ export function AdminServices() {
               </div>
             </div>
             <div style={{ fontSize: 12, color: 'var(--ink-400)' }}>
-              Lưu ý: Xoá loại xe sẽ không ảnh hưởng đến các bảng giá và xe khách đã đăng ký trước đó.
+              Lưu ý: Không thể xoá loại xe đang được dùng trong bảng giá hoặc xe khách đã đăng ký.
             </div>
           </div>
         )}
       </PageContainer>
     </AdminShell>
-  )
-}
-
-function PricingRow({ vehicleType, serviceId, existing, onRefresh }) {
-  const [draft, setDraft] = useState(() =>
-    existing
-      ? { durationMinutes: existing.durationMinutes, price: existing.price, isActive: existing.isActive }
-      : { durationMinutes: 30, price: '', isActive: true }
-  )
-  const [saving, setSaving] = useState(false)
-  const [flash, setFlash] = useState(false)
-  const [rowError, setRowError] = useState('')
-
-  // Sync only when the pricingId itself changes (entry created or swapped), not on every re-render
-  useEffect(() => {
-    if (existing) {
-      setDraft({ durationMinutes: existing.durationMinutes, price: existing.price, isActive: existing.isActive })
-    }
-  }, [existing?.pricingId])
-
-  const save = async () => {
-    if (draft.price === '' || Number(draft.price) <= 0) return
-    setSaving(true)
-    setRowError('')
-    try {
-      const payload = {
-        vehicleType,
-        durationMinutes: Math.max(1, Number(draft.durationMinutes) || 1),
-        price: Number(draft.price),
-        isActive: draft.isActive,
-      }
-      if (existing) {
-        await updatePricing(serviceId, existing.pricingId, payload)
-      } else {
-        await createPricing(serviceId, payload)
-      }
-      setFlash(true)
-      setTimeout(() => setFlash(false), 1800)
-      await onRefresh()
-    } catch (err) {
-      setRowError(getApiError(err, 'Lỗi lưu giá.'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const isNew = !existing
-  return (
-    <>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 1fr 36px', gap: 6, alignItems: 'center' }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: isNew ? 'var(--ink-400)' : 'var(--ink-700)', paddingLeft: 2 }}>
-          {vehicleType}
-          {isNew && <span style={{ fontSize: 10, fontWeight: 500, marginLeft: 6, color: 'var(--ink-300)' }}>chưa có giá</span>}
-        </div>
-        <input
-          className="aw-input" type="number" min={1} max={1440}
-          value={draft.durationMinutes}
-          onChange={(e) => setDraft({ ...draft, durationMinutes: e.target.value })}
-          placeholder="Phút"
-        />
-        <input
-          className="aw-input" type="number" min={0}
-          value={draft.price}
-          onChange={(e) => setDraft({ ...draft, price: e.target.value })}
-          placeholder={isNew ? 'Nhập giá để thêm' : ''}
-          title={draft.price ? formatVND(draft.price) : ''}
-        />
-        <button
-          type="button"
-          className={`aw-btn aw-btn-sm ${flash ? 'aw-btn-green' : isNew ? 'aw-btn-ghost' : 'aw-btn-ghost'}`}
-          style={isNew ? { borderStyle: 'dashed' } : {}}
-          onClick={save}
-          disabled={saving || draft.price === '' || Number(draft.price) <= 0}
-          title={isNew ? 'Thêm giá' : 'Lưu thay đổi'}
-        >
-          {saving ? '…' : flash ? <Icons.Check size={13} stroke="var(--green-ink)" /> : isNew ? <Icons.Plus size={13} /> : <Icons.Check size={13} />}
-        </button>
-      </div>
-      {rowError && <div style={{ fontSize: 11, color: 'var(--danger)', paddingLeft: 2, marginTop: -4 }}>{rowError}</div>}
-    </>
   )
 }

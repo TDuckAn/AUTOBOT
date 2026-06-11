@@ -1,3 +1,4 @@
+using AutoWashPro.API.Caching;
 using AutoWashPro.BLL.DTOs.VehicleType;
 using AutoWashPro.DAL.Data;
 using AutoWashPro.DAL.Data.Entities;
@@ -9,25 +10,28 @@ namespace AutoWashPro.API.Controllers;
 
 [ApiController]
 [Route("api/vehicle-types")]
-public class VehicleTypeController(AppDbContext db) : ControllerBase
+public class VehicleTypeController(AppDbContext db, CatalogCache catalogCache) : ControllerBase
 {
     private readonly AppDbContext _db = db;
+    private readonly CatalogCache _catalogCache = catalogCache;
 
     [HttpGet]
     [AllowAnonymous]
     public async Task<IActionResult> List()
     {
-        var types = await _db.VehicleTypes
-            .AsNoTracking()
-            .Where(vt => vt.IsActive)
-            .OrderBy(vt => vt.Name)
-            .Select(vt => new VehicleTypeDto
-            {
-                VehicleTypeId = vt.VehicleTypeId,
-                Name = vt.Name,
-                IsActive = vt.IsActive,
-            })
-            .ToListAsync();
+        var types = await _catalogCache.GetOrCreateAsync(
+            "vehicletypes:active",
+            async () => await _db.VehicleTypes
+                .AsNoTracking()
+                .Where(vt => vt.IsActive)
+                .OrderBy(vt => vt.Name)
+                .Select(vt => new VehicleTypeDto
+                {
+                    VehicleTypeId = vt.VehicleTypeId,
+                    Name = vt.Name,
+                    IsActive = vt.IsActive,
+                })
+                .ToListAsync());
 
         return Ok(types);
     }
@@ -52,6 +56,7 @@ public class VehicleTypeController(AppDbContext db) : ControllerBase
 
         _db.VehicleTypes.Add(vt);
         await _db.SaveChangesAsync();
+        _catalogCache.Invalidate();
 
         return Ok(new VehicleTypeDto { VehicleTypeId = vt.VehicleTypeId, Name = vt.Name, IsActive = vt.IsActive });
     }
@@ -66,8 +71,17 @@ public class VehicleTypeController(AppDbContext db) : ControllerBase
             return NotFound();
         }
 
+        // A vehicle type referenced by vehicles or pricing cannot be deleted (FK constraint).
+        var inUse = await _db.Vehicles.AnyAsync(v => v.VehicleTypeId == id)
+            || await _db.ServicePricings.AnyAsync(p => p.VehicleTypeId == id);
+        if (inUse)
+        {
+            return BadRequest("Không thể xoá loại xe đang được sử dụng bởi xe hoặc bảng giá.");
+        }
+
         _db.VehicleTypes.Remove(vt);
         await _db.SaveChangesAsync();
+        _catalogCache.Invalidate();
 
         return NoContent();
     }

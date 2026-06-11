@@ -53,11 +53,23 @@ public class BookingService(
         var nowSlot = DateTime.UtcNow.RoundDownToSlot(_slotDurationMinutes);
         var slots = new List<AvailabilitySlotDto>();
 
+        // Fetch the whole day's overlapping bookings once, then compute every slot's
+        // capacity in memory (previously one COUNT query per sub-slot per slot).
         await using var tx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        var fetchEnd = dayEnd.AddMinutes(pricing.DurationMinutes);
+        var dayBookings = await _db.Bookings
+            .Where(booking =>
+                booking.Status != BookingStatus.Cancelled
+                && booking.ScheduledAt < fetchEnd
+                && booking.ExpectedEndAt > dayStart)
+            .Select(booking => new BookingInterval(booking.ScheduledAt, booking.ExpectedEndAt))
+            .ToListAsync();
+        await tx.CommitAsync();
+
         for (var slotStart = dayStart; slotStart < dayEnd; slotStart = slotStart.AddMinutes(_slotDurationMinutes))
         {
             var slotEnd = slotStart.AddMinutes(pricing.DurationMinutes);
-            var remaining = await GetRemainingCapacityAsync(slotStart, slotEnd);
+            var remaining = Math.Max(0, _maxCapacityPerSlot - MaxConcurrency(dayBookings, slotStart, slotEnd));
             var isInFuture = slotStart >= nowSlot;
             slots.Add(new AvailabilitySlotDto
             {
@@ -68,7 +80,6 @@ public class BookingService(
             });
         }
 
-        await tx.CommitAsync();
         return Result<IReadOnlyList<AvailabilitySlotDto>>.Ok(slots);
     }
 
@@ -217,10 +228,13 @@ public class BookingService(
             .AsNoTracking()
             .Include(booking => booking.Pricing)
             .ThenInclude(pricing => pricing.Service)
+            .Include(booking => booking.Pricing)
+            .ThenInclude(pricing => pricing.VehicleType)
             .Where(booking => booking.CustomerId == customerId)
             .OrderByDescending(booking => booking.ScheduledAt);
 
-        return Result<PagedResultDto<BookingResponseDto>>.Ok(await ToPagedResultAsync(query, page, pageSize));
+        return Result<PagedResultDto<BookingResponseDto>>.Ok(
+            await query.ToPagedResultAsync(page, pageSize, ToBookingResponseDto));
     }
 
     public async Task<Result<PagedResultDto<BookingResponseDto>>> GetAdminBookingsAsync(
@@ -234,6 +248,8 @@ public class BookingService(
             .AsNoTracking()
             .Include(booking => booking.Pricing)
             .ThenInclude(pricing => pricing.Service)
+            .Include(booking => booking.Pricing)
+            .ThenInclude(pricing => pricing.VehicleType)
             .AsQueryable();
 
         if (date.HasValue)
@@ -254,7 +270,8 @@ public class BookingService(
         }
 
         query = query.OrderByDescending(booking => booking.ScheduledAt);
-        return Result<PagedResultDto<BookingResponseDto>>.Ok(await ToPagedResultAsync(query, page, pageSize));
+        return Result<PagedResultDto<BookingResponseDto>>.Ok(
+            await query.ToPagedResultAsync(page, pageSize, ToBookingResponseDto));
     }
 
     public async Task<Result<PagedResultDto<BookingResponseDto>>> GetDailyQueueAsync(DateOnly date, int page, int pageSize)
@@ -270,6 +287,8 @@ public class BookingService(
             .ThenInclude(customer => customer!.TierConfig)
             .Include(booking => booking.Pricing)
             .ThenInclude(pricing => pricing.Service)
+            .Include(booking => booking.Pricing)
+            .ThenInclude(pricing => pricing.VehicleType)
             .Where(booking =>
                 booking.ScheduledAt >= dayStart
                 && booking.ScheduledAt < dayEnd
@@ -356,6 +375,7 @@ public class BookingService(
     {
         return await _db.ServicePricings
             .Include(pricing => pricing.Service)
+            .Include(pricing => pricing.VehicleType)
             .SingleOrDefaultAsync(pricing =>
                 pricing.PricingId == pricingId
                 && pricing.IsActive
@@ -377,61 +397,37 @@ public class BookingService(
 
     private async Task<bool> IsRangeAvailableAsync(DateTime scheduledAt, DateTime expectedEndAt)
     {
-        var maxConcurrentBookings = 0;
-        for (var slotStart = scheduledAt; slotStart < expectedEndAt; slotStart = slotStart.AddMinutes(_slotDurationMinutes))
-        {
-            var slotEnd = slotStart.AddMinutes(_slotDurationMinutes);
-            var overlappingBookings = await CountOverlappingBookingsAsync(slotStart, slotEnd);
-            maxConcurrentBookings = Math.Max(maxConcurrentBookings, overlappingBookings);
-        }
-
-        return maxConcurrentBookings < _maxCapacityPerSlot;
-    }
-
-    private async Task<int> GetRemainingCapacityAsync(DateTime scheduledAt, DateTime expectedEndAt)
-    {
-        var minimumRemainingCapacity = _maxCapacityPerSlot;
-        for (var slotStart = scheduledAt; slotStart < expectedEndAt; slotStart = slotStart.AddMinutes(_slotDurationMinutes))
-        {
-            var slotEnd = slotStart.AddMinutes(_slotDurationMinutes);
-            var overlappingBookings = await CountOverlappingBookingsAsync(slotStart, slotEnd);
-            minimumRemainingCapacity = Math.Min(minimumRemainingCapacity, _maxCapacityPerSlot - overlappingBookings);
-        }
-
-        return Math.Max(0, minimumRemainingCapacity);
-    }
-
-    private async Task<int> CountOverlappingBookingsAsync(DateTime slotStart, DateTime slotEnd)
-    {
-        return await _db.Bookings.CountAsync(booking =>
-            booking.Status != BookingStatus.Cancelled
-            && booking.ScheduledAt < slotEnd
-            && booking.ExpectedEndAt > slotStart);
-    }
-
-    private static async Task<PagedResultDto<BookingResponseDto>> ToPagedResultAsync(
-        IQueryable<Booking> query,
-        int page,
-        int pageSize)
-    {
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, MaxPageSize);
-
-        var totalCount = await query.CountAsync();
-        var items = await query
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(booking => ToBookingResponseDto(booking))
+        // Single query: fetch all non-cancelled bookings overlapping the requested range,
+        // then evaluate per-sub-slot concurrency in memory (BR-01).
+        var overlapping = await _db.Bookings
+            .Where(booking =>
+                booking.Status != BookingStatus.Cancelled
+                && booking.ScheduledAt < expectedEndAt
+                && booking.ExpectedEndAt > scheduledAt)
+            .Select(booking => new BookingInterval(booking.ScheduledAt, booking.ExpectedEndAt))
             .ToListAsync();
 
-        return new PagedResultDto<BookingResponseDto>
-        {
-            Items = items,
-            Page = page,
-            PageSize = pageSize,
-            TotalCount = totalCount
-        };
+        return MaxConcurrency(overlapping, scheduledAt, expectedEndAt) < _maxCapacityPerSlot;
     }
+
+    // Maximum number of bookings concurrently occupying any 30-min sub-slot of [rangeStart, rangeEnd).
+    private int MaxConcurrency(IReadOnlyList<BookingInterval> bookings, DateTime rangeStart, DateTime rangeEnd)
+    {
+        var max = 0;
+        for (var slotStart = rangeStart; slotStart < rangeEnd; slotStart = slotStart.AddMinutes(_slotDurationMinutes))
+        {
+            var slotEnd = slotStart.AddMinutes(_slotDurationMinutes);
+            var concurrent = bookings.Count(b => b.ScheduledAt < slotEnd && b.ExpectedEndAt > slotStart);
+            if (concurrent > max)
+            {
+                max = concurrent;
+            }
+        }
+
+        return max;
+    }
+
+    private readonly record struct BookingInterval(DateTime ScheduledAt, DateTime ExpectedEndAt);
 
     private static BookingResponseDto ToBookingResponseDto(Booking booking)
     {
@@ -444,7 +440,7 @@ public class BookingService(
             PromotionId = booking.PromotionId,
             CreatedBy = booking.CreatedBy,
             ServiceName = booking.Pricing.Service.Name,
-            VehicleType = booking.Pricing.VehicleType,
+            VehicleTypeName = booking.Pricing.VehicleType.Name,
             ScheduledAt = booking.ScheduledAt,
             ExpectedEndAt = booking.ExpectedEndAt,
             CompletedAt = booking.CompletedAt,

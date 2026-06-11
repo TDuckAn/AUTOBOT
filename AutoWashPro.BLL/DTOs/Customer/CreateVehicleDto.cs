@@ -9,8 +9,7 @@ public class CreateVehicleDto
     public string LicensePlate { get; set; } = string.Empty;
 
     [Required]
-    [MaxLength(50)]
-    public string VehicleType { get; set; } = string.Empty;
+    public Guid VehicleTypeId { get; set; }
 
     [MaxLength(100)]
     public string? Brand { get; set; }

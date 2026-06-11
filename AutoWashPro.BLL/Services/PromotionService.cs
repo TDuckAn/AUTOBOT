@@ -1,4 +1,5 @@
 using AutoWashPro.BLL.Common;
+using AutoWashPro.BLL.Common.Extensions;
 using AutoWashPro.DAL.Data;
 using AutoWashPro.DAL.Data.Entities;
 using AutoWashPro.DAL.Data.Entities.Enums;
@@ -13,15 +14,11 @@ public class PromotionService(
     AppDbContext db,
     ILogger<PromotionService> logger) : IPromotionService
 {
-    private const int MaxPageSize = 100;
     private readonly AppDbContext _db = db;
     private readonly ILogger<PromotionService> _logger = logger;
 
     public async Task<Result<PagedResultDto<PromotionDto>>> GetPromotionsAsync(bool includeInactive, int page, int pageSize)
     {
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, MaxPageSize);
-
         var query = _db.Promotions
             .AsNoTracking()
             .Include(promotion => promotion.MinTier)
@@ -32,21 +29,8 @@ public class PromotionService(
             query = query.Where(promotion => promotion.IsActive);
         }
 
-        var totalCount = await query.CountAsync();
-        var promotions = await query
-            .OrderByDescending(promotion => promotion.CreatedAt)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(promotion => ToDto(promotion))
-            .ToListAsync();
-
-        return Result<PagedResultDto<PromotionDto>>.Ok(new PagedResultDto<PromotionDto>
-        {
-            Items = promotions,
-            Page = page,
-            PageSize = pageSize,
-            TotalCount = totalCount
-        });
+        var ordered = query.OrderByDescending(promotion => promotion.CreatedAt);
+        return Result<PagedResultDto<PromotionDto>>.Ok(await ordered.ToPagedResultAsync(page, pageSize, ToDto));
     }
 
     public async Task<Result<PromotionDto>> GetPromotionAsync(Guid promotionId)

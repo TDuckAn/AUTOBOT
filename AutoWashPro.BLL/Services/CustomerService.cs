@@ -1,4 +1,5 @@
 using AutoWashPro.BLL.Common;
+using AutoWashPro.BLL.Common.Extensions;
 using AutoWashPro.DAL.Data;
 using AutoWashPro.DAL.Data.Entities;
 using AutoWashPro.BLL.DTOs.Booking;
@@ -12,7 +13,6 @@ public class CustomerService(
     AppDbContext db,
     ILogger<CustomerService> logger) : ICustomerService
 {
-    private const int MaxPageSize = 100;
     private readonly AppDbContext _db = db;
     private readonly ILogger<CustomerService> _logger = logger;
 
@@ -62,28 +62,13 @@ public class CustomerService(
 
     public async Task<Result<PagedResultDto<VehicleDto>>> GetVehiclesAsync(Guid customerId, int page, int pageSize)
     {
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, MaxPageSize);
-
         var query = _db.Vehicles
             .AsNoTracking()
+            .Include(vehicle => vehicle.VehicleType)
             .Where(vehicle => vehicle.CustomerId == customerId)
             .OrderBy(vehicle => vehicle.LicensePlate);
 
-        var totalCount = await query.CountAsync();
-        var vehicles = await query
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(vehicle => ToVehicleDto(vehicle))
-            .ToListAsync();
-
-        return Result<PagedResultDto<VehicleDto>>.Ok(new PagedResultDto<VehicleDto>
-        {
-            Items = vehicles,
-            Page = page,
-            PageSize = pageSize,
-            TotalCount = totalCount
-        });
+        return Result<PagedResultDto<VehicleDto>>.Ok(await query.ToPagedResultAsync(page, pageSize, ToVehicleDto));
     }
 
     public async Task<Result<VehicleDto>> AddVehicleAsync(Guid customerId, CreateVehicleDto request)
@@ -101,12 +86,20 @@ public class CustomerService(
             return Result<VehicleDto>.Fail("License plate is already registered.");
         }
 
+        var vehicleType = await _db.VehicleTypes
+            .SingleOrDefaultAsync(vt => vt.VehicleTypeId == request.VehicleTypeId && vt.IsActive);
+        if (vehicleType is null)
+        {
+            return Result<VehicleDto>.Fail("Vehicle type was not found.");
+        }
+
         var vehicle = new Vehicle
         {
             VehicleId = Guid.NewGuid(),
             CustomerId = customerId,
             LicensePlate = licensePlate,
-            VehicleType = request.VehicleType.Trim(),
+            VehicleTypeId = vehicleType.VehicleTypeId,
+            VehicleType = vehicleType,
             Brand = string.IsNullOrWhiteSpace(request.Brand) ? null : request.Brand.Trim(),
             CreatedAt = DateTime.UtcNow
         };
@@ -143,28 +136,13 @@ public class CustomerService(
 
     public async Task<Result<PagedResultDto<NotificationDto>>> GetNotificationsAsync(Guid customerId, int page, int pageSize)
     {
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, MaxPageSize);
-
         var query = _db.Notifications
             .AsNoTracking()
             .Where(notification => notification.CustomerId == customerId)
             .OrderByDescending(notification => notification.CreatedAt);
 
-        var totalCount = await query.CountAsync();
-        var items = await query
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(notification => NotificationService.ToDto(notification))
-            .ToListAsync();
-
-        return Result<PagedResultDto<NotificationDto>>.Ok(new PagedResultDto<NotificationDto>
-        {
-            Items = items,
-            Page = page,
-            PageSize = pageSize,
-            TotalCount = totalCount
-        });
+        return Result<PagedResultDto<NotificationDto>>.Ok(
+            await query.ToPagedResultAsync(page, pageSize, NotificationService.ToDto));
     }
 
     private static CustomerProfileDto ToProfileDto(Customer customer)
@@ -189,7 +167,8 @@ public class CustomerService(
             VehicleId = vehicle.VehicleId,
             CustomerId = vehicle.CustomerId,
             LicensePlate = vehicle.LicensePlate,
-            VehicleType = vehicle.VehicleType,
+            VehicleTypeId = vehicle.VehicleTypeId,
+            VehicleTypeName = vehicle.VehicleType?.Name ?? string.Empty,
             Brand = vehicle.Brand,
             CreatedAt = vehicle.CreatedAt
         };

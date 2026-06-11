@@ -11,7 +11,7 @@ public class BookingResponseDto
     public Guid? PromotionId { get; set; }
     public Guid? CreatedBy { get; set; }
     public string ServiceName { get; set; } = string.Empty;
-    public string VehicleType { get; set; } = string.Empty;
+    public string VehicleTypeName { get; set; } = string.Empty;
     public DateTime ScheduledAt { get; set; }
     public DateTime ExpectedEndAt { get; set; }
     public DateTime? CompletedAt { get; set; }

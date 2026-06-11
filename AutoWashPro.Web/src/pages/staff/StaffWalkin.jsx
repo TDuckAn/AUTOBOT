@@ -12,7 +12,7 @@ export function StaffWalkin() {
   const [phone, setPhone] = useState('')
   const [plate, setPlate] = useState('')
   const [vehicleTypes, setVehicleTypes] = useState([])
-  const [selectedVehicleType, setSelectedVehicleType] = useState('')
+  const [selectedVehicleTypeId, setSelectedVehicleTypeId] = useState('')
   const [services, setServices] = useState([])
   const [pricingByService, setPricingByService] = useState({})
   const [pricingId, setPricingId] = useState('')
@@ -24,7 +24,7 @@ export function StaffWalkin() {
     Promise.all([listVehicleTypes(), listServices()])
       .then(async ([types, servData]) => {
         setVehicleTypes(types)
-        if (types[0]) setSelectedVehicleType(types[0].name)
+        if (types[0]) setSelectedVehicleTypeId(types[0].vehicleTypeId)
 
         const rows = unwrapPaged(servData)
         setServices(rows)
@@ -36,15 +36,17 @@ export function StaffWalkin() {
       .catch((err) => setInitError(getApiError(err, 'Không tải được dữ liệu.')))
   }, [])
 
+  const selectedVehicleTypeName = vehicleTypes.find((vt) => vt.vehicleTypeId === selectedVehicleTypeId)?.name ?? ''
+
   // Filter pricing options by selected vehicle type
   const options = useMemo(() => {
-    if (!selectedVehicleType) return []
+    if (!selectedVehicleTypeId) return []
     return services.flatMap((service) =>
       (pricingByService[service.serviceId] ?? [])
-        .filter((p) => p.isActive && p.vehicleType === selectedVehicleType)
+        .filter((p) => p.isActive && p.vehicleTypeId === selectedVehicleTypeId)
         .map((price) => ({ service, price }))
     )
-  }, [services, pricingByService, selectedVehicleType])
+  }, [services, pricingByService, selectedVehicleTypeId])
 
   // Auto-select first option when vehicle type changes
   useEffect(() => {
@@ -96,11 +98,11 @@ export function StaffWalkin() {
           <StepHeader n="2" title="Loại xe" sub="Chọn loại xe để lọc dịch vụ phù hợp" />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
             {vehicleTypes.map((vt) => {
-              const checked = selectedVehicleType === vt.name
+              const checked = selectedVehicleTypeId === vt.vehicleTypeId
               return (
                 <button
                   key={vt.vehicleTypeId} type="button"
-                  onClick={() => setSelectedVehicleType(vt.name)}
+                  onClick={() => setSelectedVehicleTypeId(vt.vehicleTypeId)}
                   style={{
                     padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: checked ? 700 : 500,
                     border: `1px solid ${checked ? 'var(--primary)' : 'var(--border)'}`,
@@ -115,8 +117,8 @@ export function StaffWalkin() {
           </div>
 
           {/* Step 3: Service selection */}
-          <StepHeader n="3" title="Dịch vụ" sub={selectedVehicleType ? `Dịch vụ dành cho ${selectedVehicleType}` : 'Chọn loại xe trước'} />
-          {options.length === 0 && selectedVehicleType ? (
+          <StepHeader n="3" title="Dịch vụ" sub={selectedVehicleTypeId ? `Dịch vụ dành cho ${selectedVehicleTypeName}` : 'Chọn loại xe trước'} />
+          {options.length === 0 && selectedVehicleTypeId ? (
             <div className="aw-card" style={{ padding: 16, color: 'var(--ink-500)', fontSize: 13 }}>
               Không có dịch vụ nào cho loại xe này. Admin cần thêm bảng giá.
             </div>
@@ -156,7 +158,7 @@ export function StaffWalkin() {
               <div style={{ borderRadius: 6, border: '1px solid var(--border)', overflow: 'hidden', fontSize: 12 }}>
                 {[
                   ['Dịch vụ', selected.service.name],
-                  ['Loại xe', selected.price.vehicleType],
+                  ['Loại xe', selected.price.vehicleTypeName],
                   ['Thời lượng', `${selected.price.durationMinutes} phút`],
                   ['Khách', phone || '—'],
                   ['Biển số', plate || '—'],

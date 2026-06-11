@@ -29,6 +29,8 @@ Full-stack motorbike wash management system for Vietnam SMBs — loyalty tiers, 
 | D8 | Near-expiry notification: scan `POINTS_LEDGER` for entries expiring within 30 days | Monthly job + separate near-expiry scan pass |
 | D9 | `Cors:AllowedOrigins` read from appsettings | Not hardcoded to localhost:5173 |
 | D10 | All list endpoints paginated with `?page=1&pageSize=20` | Prevents unbounded queries |
+| D11 | `Vehicle` & `ServicePricing` reference `VehicleType` via `VehicleTypeId` FK (was free-text string) | Relational integrity; the VehicleType table was orphaned. Migrated in place (backfill by name match) |
+| D12 | `ServicePricing (ServiceId, VehicleTypeId)` index is **non-unique** | Legacy data already contains duplicate pairs (bookings reference them, can't delete). App-layer check still blocks new duplicates |
 
 ---
 
@@ -110,6 +112,9 @@ WHERE status NOT IN ('Cancelled')
 | 7 — Quality & Polish | ✅ Completed |
 | 8 — 3-Layer Refactor | ✅ Completed |
 | 9 — Frontend (Staff & Admin) | ✅ Completed |
+| 10 — VehicleType FK & Performance | ✅ Completed |
+
+> **Note on Phase 10:** Implemented directly by Claude at the user's explicit request — a one-time exception to the "Claude never writes implementation code" rule above. Covers the VehicleType FK fix (D11) plus service/query/caching/frontend performance work.
 
 ---
 

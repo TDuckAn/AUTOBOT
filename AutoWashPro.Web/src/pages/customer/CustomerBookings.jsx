@@ -158,7 +158,7 @@ export function CustomerBookings() {
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 700 }}>{b.serviceName}</div>
-                    <div style={{ fontSize: 12, color: 'var(--ink-500)', fontFamily: "'Geist Mono',monospace", marginTop: 2 }}>{b.vehicleType}</div>
+                    <div style={{ fontSize: 12, color: 'var(--ink-500)', fontFamily: "'Geist Mono',monospace", marginTop: 2 }}>{b.vehicleTypeName}</div>
                     {b.pointsEarned > 0 && <div style={{ fontSize: 11, color: 'var(--green-ink)', marginTop: 2 }}>+{b.pointsEarned} điểm</div>}
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
@@ -201,7 +201,7 @@ export function CustomerBookings() {
                     <label key={v.vehicleId} className="aw-card" style={{ padding: '12px 14px', cursor: 'pointer', borderColor: checked ? 'var(--primary)' : 'var(--border)', background: checked ? 'var(--primary-soft)' : 'var(--surface)' }}>
                       <input type="radio" name="vehicle" checked={checked} onChange={() => setVehicleId(v.vehicleId)} style={{ position: 'absolute', opacity: 0 }} />
                       <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Geist Mono',monospace" }}>{v.licensePlate}</div>
-                      <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 3 }}>{v.vehicleType}{v.brand ? ` · ${v.brand}` : ''}</div>
+                      <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 3 }}>{v.vehicleTypeName}{v.brand ? ` · ${v.brand}` : ''}</div>
                     </label>
                   )
                 })}
@@ -218,7 +218,7 @@ export function CustomerBookings() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 700 }}>{service.name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 2 }}>{pricing.vehicleType} · {pricing.durationMinutes} phút</div>
+                        <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 2 }}>{pricing.vehicleTypeName} · {pricing.durationMinutes} phút</div>
                       </div>
                       <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary-ink)', fontFamily: "'Geist Mono',monospace" }}>{formatVND(pricing.price)}</div>
                     </div>
@@ -288,7 +288,7 @@ export function CustomerBookings() {
                 <div style={{ borderRadius: 6, border: '1px solid var(--border)', overflow: 'hidden', fontSize: 12 }}>
                   {[
                     ['Dịch vụ', selectedPricing.service.name],
-                    ['Loại xe', selectedPricing.pricing.vehicleType],
+                    ['Loại xe', selectedPricing.pricing.vehicleTypeName],
                     ['Thời gian', `${selectedPricing.pricing.durationMinutes} phút`],
                     ['Xe', vehicles.find((v) => v.vehicleId === vehicleId)?.licensePlate ?? '—'],
                     ['Giờ hẹn', scheduledAt ? formatTime(scheduledAt) : '—'],

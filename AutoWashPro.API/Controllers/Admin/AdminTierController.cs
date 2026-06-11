@@ -1,3 +1,4 @@
+using AutoWashPro.API.Caching;
 using AutoWashPro.DAL.Data;
 using AutoWashPro.DAL.Data.Entities;
 using AutoWashPro.BLL.DTOs.Admin;
@@ -13,9 +14,11 @@ namespace AutoWashPro.API.Controllers.Admin;
 [Route("api/admin/tiers")]
 public class AdminTierController(
     AppDbContext db,
+    CatalogCache catalogCache,
     ILogger<AdminTierController> logger) : ControllerBase
 {
     private readonly AppDbContext _db = db;
+    private readonly CatalogCache _catalogCache = catalogCache;
     private readonly ILogger<AdminTierController> _logger = logger;
 
     [HttpGet]
@@ -24,24 +27,31 @@ public class AdminTierController(
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
-        var query = _db.TierConfigs
-            .AsNoTracking()
-            .OrderBy(tier => tier.RankOrder);
+        var result = await _catalogCache.GetOrCreateAsync(
+            $"tiers:{page}:{pageSize}",
+            async () =>
+            {
+                var query = _db.TierConfigs
+                    .AsNoTracking()
+                    .OrderBy(tier => tier.RankOrder);
 
-        var totalCount = await query.CountAsync();
-        var tiers = await query
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(tier => ToDto(tier))
-            .ToListAsync();
+                var totalCount = await query.CountAsync();
+                var tiers = await query
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .Select(tier => ToDto(tier))
+                    .ToListAsync();
 
-        return Ok(new PagedResultDto<TierConfigDto>
-        {
-            Items = tiers,
-            Page = page,
-            PageSize = pageSize,
-            TotalCount = totalCount
-        });
+                return new PagedResultDto<TierConfigDto>
+                {
+                    Items = tiers,
+                    Page = page,
+                    PageSize = pageSize,
+                    TotalCount = totalCount
+                };
+            });
+
+        return Ok(result);
     }
 
     [HttpPut("{id:guid}")]
@@ -77,6 +87,7 @@ public class AdminTierController(
         tier.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();
+        _catalogCache.Invalidate();
 
         _logger.LogInformation("Updated tier {TierId}.", id);
         return Ok(ToDto(tier));

@@ -13,4 +13,17 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Split rarely-changing vendor code into long-cacheable chunks; recharts
+        // (only the admin dashboard needs it) is isolated from the core bundle.
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-charts': ['recharts'],
+          'vendor-utils': ['axios', 'jwt-decode'],
+        },
+      },
+    },
+  },
 })
