@@ -1,0 +1,266 @@
+/* AutoWash Pro — Design System v2
+   Inspired by: shadcn/ui · Linear · Stripe · Shopify Admin
+*/
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap');
+
+:root {
+  /* ── Surfaces (near-white, not tinted) */
+  --bg:         #f4f4f5;   /* zinc-100 */
+  --surface:    #ffffff;
+  --surface-2:  #fafafa;   /* zinc-50 */
+  --surface-3:  #f4f4f5;   /* zinc-100 */
+  --border:     #e4e4e7;   /* zinc-200 */
+  --border-strong: #d1d5db;
+
+  /* ── Ink (slate-ish, not teal-tinted) */
+  --ink-900:  #09090b;   /* zinc-950 */
+  --ink-700:  #3f3f46;   /* zinc-700 */
+  --ink-500:  #71717a;   /* zinc-500 */
+  --ink-400:  #a1a1aa;   /* zinc-400 */
+  --ink-300:  #d4d4d8;   /* zinc-300 */
+
+  /* ── Brand — ocean teal, kept vivid */
+  --primary:       oklch(52% 0.12 210);
+  --primary-dark:  oklch(42% 0.12 210);
+  --primary-light: oklch(60% 0.12 210);
+  --primary-soft:  oklch(96% 0.022 210);
+  --primary-ink:   oklch(28% 0.08 210);
+  --primary-ring:  oklch(52% 0.12 210 / 20%);
+
+  /* ── Semantic greens */
+  --green:      oklch(62% 0.14 158);
+  --green-dark: oklch(50% 0.14 158);
+  --green-soft: oklch(96% 0.035 158);
+  --green-ink:  oklch(30% 0.09 158);
+  --green-ring: oklch(62% 0.14 158 / 18%);
+
+  /* ── Loyalty gold */
+  --gold:      oklch(76% 0.14 76);
+  --gold-soft: oklch(96% 0.04 80);
+  --gold-ink:  oklch(38% 0.11 76);
+
+  /* ── Danger */
+  --danger:      oklch(56% 0.20 25);
+  --danger-soft: oklch(97% 0.02 25);
+  --danger-ink:  oklch(36% 0.12 25);
+
+  /* ── Warning */
+  --warning:      oklch(76% 0.14 76);
+  --warning-soft: oklch(97% 0.04 80);
+  --warning-ink:  oklch(40% 0.10 76);
+
+  /* ── Tier palette */
+  --tier-dong:     oklch(58% 0.08 50);
+  --tier-bac:      oklch(68% 0.02 240);
+  --tier-vang:     oklch(76% 0.14 76);
+  --tier-platinum: oklch(58% 0.11 200);
+
+  /* ── Shadows — minimal like Stripe (border > shadow) */
+  --shadow-xs: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-lg: 0 10px 24px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+
+  /* ── Radii — shadcn/ui scale */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius:    8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+
+  /* ── Sidebar (Linear dark) */
+  --sidebar-bg:      #111318;
+  --sidebar-border:  rgba(255,255,255,0.07);
+  --sidebar-ink:     rgba(255,255,255,0.55);
+  --sidebar-ink-hi:  rgba(255,255,255,0.90);
+  --sidebar-active:  rgba(255,255,255,0.08);
+  --sidebar-hover:   rgba(255,255,255,0.05);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0;
+  font-family: 'Be Vietnam Pro', system-ui, -apple-system, sans-serif;
+  color: var(--ink-900);
+  background: #e4e4e7;
+  font-feature-settings: 'cv11','ss01';
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button, input, select { font-family: inherit; }
+
+/* ── Scrollbars — thin, subtle */
+.aw-scroll { overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--ink-300) transparent; }
+.aw-scroll::-webkit-scrollbar { width: 5px; }
+.aw-scroll::-webkit-scrollbar-thumb { background: var(--ink-300); border-radius: 3px; }
+.aw-noscroll { scrollbar-width: none; overflow: auto; }
+.aw-noscroll::-webkit-scrollbar { display: none; }
+
+/* ── Photo placeholder */
+.aw-photo {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--surface-3) 0 5px,
+    var(--border) 5px 10px
+  );
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Geist Mono', 'JetBrains Mono', monospace;
+  font-size: 10px; color: var(--ink-500);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  border-radius: var(--radius); border: 1px solid var(--border);
+}
+
+/* ── Tablet bezel */
+.aw-tablet {
+  background: #18191c;
+  border: 8px solid #242629;
+  border-radius: 22px;
+  box-shadow: 0 32px 96px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.04);
+  overflow: hidden; display: flex; flex-direction: column; position: relative;
+}
+.aw-tablet::before {
+  content: ''; position: absolute; top: 50%; left: 4px;
+  transform: translateY(-50%); width: 2px; height: 36px;
+  background: #31363a; border-radius: 2px;
+}
+
+/* ── Input — shadcn/ui style */
+.aw-input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0 12px;
+  height: 36px;
+  font: inherit; font-size: 14px; color: var(--ink-900);
+  outline: none;
+  transition: border-color .12s, box-shadow .12s;
+  line-height: 36px;
+}
+.aw-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-ring);
+}
+.aw-input::placeholder { color: var(--ink-400); font-size: 13px; }
+.aw-input[type="password"] { letter-spacing: 0.12em; }
+
+/* taller inputs for mobile (44px tap target) */
+.aw-input-lg {
+  height: 44px; padding: 0 14px; font-size: 15px; line-height: 44px;
+}
+
+/* ── Buttons — shadcn/ui refined */
+.aw-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 36px; padding: 0 14px;
+  border-radius: var(--radius-sm);
+  font: inherit; font-weight: 500; font-size: 13px;
+  border: 1px solid transparent;
+  cursor: pointer; white-space: nowrap; user-select: none;
+  transition: background .10s, border-color .10s, box-shadow .10s, opacity .10s;
+  letter-spacing: 0.01em;
+}
+.aw-btn:active { opacity: 0.88; }
+
+.aw-btn-sm { height: 30px; padding: 0 10px; font-size: 12px; border-radius: var(--radius-xs); }
+.aw-btn-lg { height: 44px; padding: 0 18px; font-size: 15px; font-weight: 600; }
+
+.aw-btn-primary {
+  background: var(--primary); color: #fff;
+  border-color: var(--primary-dark);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.aw-btn-primary:hover { background: var(--primary-dark); border-color: var(--primary-dark); }
+
+.aw-btn-ghost {
+  background: var(--surface); color: var(--ink-900);
+  border-color: var(--border);
+  box-shadow: var(--shadow-xs);
+}
+.aw-btn-ghost:hover { background: var(--surface-3); }
+
+.aw-btn-green {
+  background: var(--green); color: #fff;
+  border-color: var(--green-dark);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.aw-btn-green:hover { background: var(--green-dark); }
+
+.aw-btn-danger {
+  background: var(--danger-soft); color: var(--danger);
+  border-color: oklch(90% 0.06 25);
+}
+.aw-btn-danger:hover { background: oklch(94% 0.04 25); }
+
+.aw-btn-outline {
+  background: transparent; color: var(--ink-700); border-color: var(--border);
+}
+.aw-btn-outline:hover { background: var(--surface-3); }
+
+/* ── Card — shadcn/ui: border only, no shadow */
+.aw-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+/* ── Table — Stripe-style */
+.aw-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.aw-table th {
+  padding: 9px 14px; text-align: left;
+  font-size: 11px; font-weight: 600; color: var(--ink-500);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  background: var(--surface-2); border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.aw-table td {
+  padding: 11px 14px; vertical-align: middle;
+  border-bottom: 1px solid var(--surface-3);
+  color: var(--ink-900);
+}
+.aw-table tbody tr:last-child td { border-bottom: none; }
+.aw-table tbody tr:hover td { background: var(--surface-2); cursor: pointer; }
+
+/* ── Status badges — Linear style */
+.aw-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px; border-radius: var(--radius-xs);
+  font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+  border: 1px solid transparent;
+}
+.aw-badge-green    { background: var(--green-soft);   color: var(--green-ink);   border-color: oklch(90% 0.07 158); }
+.aw-badge-blue     { background: var(--primary-soft);  color: var(--primary-ink); border-color: oklch(90% 0.05 210); }
+.aw-badge-amber    { background: var(--warning-soft);  color: var(--warning-ink); border-color: oklch(90% 0.07 80); }
+.aw-badge-red      { background: var(--danger-soft);   color: var(--danger-ink);  border-color: oklch(90% 0.07 25); }
+.aw-badge-neutral  { background: var(--surface-3);     color: var(--ink-700);     border-color: var(--border); }
+
+/* ── Tier badges */
+.aw-tier-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px 2px 6px; border-radius: var(--radius-xs);
+  font-size: 11px; font-weight: 600; letter-spacing: 0.01em;
+  border: 1px solid transparent;
+}
+.aw-tier-dong     { background: oklch(95% 0.03 50);  color: var(--tier-dong);     border-color: oklch(88% 0.06 50); }
+.aw-tier-bac      { background: oklch(95% 0.01 240); color: var(--tier-bac);      border-color: oklch(88% 0.02 240); }
+.aw-tier-vang     { background: oklch(95% 0.05 80);  color: var(--tier-vang);     border-color: oklch(88% 0.09 80); }
+.aw-tier-platinum { background: oklch(95% 0.03 200); color: var(--tier-platinum); border-color: oklch(88% 0.06 200); }
+
+/* ── Divider */
+.aw-divider { height: 1px; background: var(--border); border: none; margin: 0; }
+
+/* ── Sidebar item base */
+.aw-nav-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: var(--radius-sm);
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  color: var(--sidebar-ink); text-decoration: none;
+  border: none; background: transparent; width: 100%; text-align: left;
+  transition: background .10s, color .10s;
+}
+.aw-nav-item:hover { background: var(--sidebar-hover); color: var(--sidebar-ink-hi); }
+.aw-nav-item.active {
+  background: var(--sidebar-active); color: var(--sidebar-ink-hi); font-weight: 600;
+}

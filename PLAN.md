@@ -1,9 +1,9 @@
 # AutoWash Pro — Master Build Plan
 > **Stack:** React + ASP.NET Core 9 Web API + SQL Server + EF Core 9  
 > **Claude:** Plans each phase, reviews decisions, resolves ambiguity  
-> **Codex:** Implements each phase following CODEX.md  
+> **Codex:** Implements each phase following AGENTS.md  
 > **Copilot:** Assists in-editor following AGENT.md  
-> **Context files:** CLAUDE.md · CODEX.md · AGENT.md (load at session start to restore context)
+> **Context files:** CLAUDE.md · AGENTS.md · AGENT.md (load at session start to restore context)
 
 ---
 
@@ -42,7 +42,7 @@
 
 ### ✅ Good — Keep As-Is
 
-- Single monolith (correct for 10-week timeline)  
+- 3-project solution: API (presentation) · BLL (business logic) · DAL (data access)  
 - EF Core Code-First, no raw SQL except documented performance queries  
 - `Result<T>` pattern — services never throw for business rule violations  
 - Append-only `POINTS_LEDGER` (BR-09)  
@@ -56,7 +56,7 @@
 
 | Decision | Choice | Reason |
 |----------|--------|--------|
-| Project type | Single ASP.NET Core Web API project | 10-week timeline; clean layer separation allows future extraction |
+| Project structure | 3-project solution: **AutoWashPro.DAL** (entities, DbContext, migrations) · **AutoWashPro.BLL** (services, interfaces, DTOs, common) · **AutoWashPro.API** (controllers, middleware, jobs, Program.cs) | Clear layer boundaries; API → BLL → DAL dependency chain |
 | ORM | EF Core 9 Code-First | Migrations managed; no raw SQL except performance-critical queries |
 | Auth | JWT Bearer, 1440 min expiry | Stateless; two token types: Customer + SYSTEM_USER |
 | Capacity locking | `IsolationLevel.Serializable` transaction | Prevents phantom reads during concurrent booking |
@@ -222,13 +222,509 @@
 
 ---
 
+### Phase 8 — 3-Layer Architecture Refactor
+
+**Goal:** Break the monolithic `AutoWashPro.API` into three proper projects following a strict API → BLL → DAL dependency chain. All existing functionality must continue to work after the move.
+
+#### Layer Responsibilities
+
+| Project | Contains | References |
+| --- | --- | --- |
+| `AutoWashPro.DAL` | Entities, Enums, `AppDbContext`, Migrations | EF Core SqlServer, EF Core Tools |
+| `AutoWashPro.BLL` | Services, Service Interfaces, DTOs, `Common/` (Result, AppConstants, Extensions) | DAL project, BCrypt.Net-Next |
+| `AutoWashPro.API` | Controllers, Middleware, Jobs, `Program.cs`, `appsettings*.json` | BLL project, JwtBearer, Swashbuckle |
+
+#### Tasks
+
+##### Step 1 — Register both new projects in the solution
+
+```sh
+# Run from the directory containing AutoWashPro.API.sln
+dotnet sln add ../AutoWashPro.BLL/AutoWashPro.BLL.csproj
+dotnet sln add ../AutoWashPro.DAL/AutoWashPro.DAL.csproj
+```
+
+##### Step 2 — Add NuGet packages to the correct projects
+
+- `AutoWashPro.DAL.csproj`: add `Microsoft.EntityFrameworkCore.SqlServer` v9.\*, `Microsoft.EntityFrameworkCore.Tools` v9.\*
+- `AutoWashPro.BLL.csproj`: add `BCrypt.Net-Next` v4.\*
+- `AutoWashPro.API.csproj`: keep `Microsoft.AspNetCore.Authentication.JwtBearer` v9.\*, `Swashbuckle.AspNetCore` v6.\*; **remove** EF Core packages and BCrypt (they live in DAL/BLL now)
+
+##### Step 3 — Add project-to-project references
+
+- `AutoWashPro.BLL.csproj`: `<ProjectReference Include="..\AutoWashPro.DAL\AutoWashPro.DAL.csproj" />`
+- `AutoWashPro.API.csproj`: `<ProjectReference Include="..\AutoWashPro.BLL\AutoWashPro.BLL.csproj" />`
+- DAL is transitively available in API through BLL — no direct API → DAL reference needed
+
+##### Step 4 — Move files from API into DAL
+
+Move the entire `Data/` folder into `AutoWashPro.DAL/`:
+
+```text
+AutoWashPro.DAL/
+├── Data/
+│   ├── AppDbContext.cs
+│   ├── Entities/
+│   │   ├── Customer.cs, Vehicle.cs, Service.cs, ServicePricing.cs
+│   │   ├── Booking.cs, PointsLedger.cs, TierConfig.cs, Promotion.cs
+│   │   ├── SystemUser.cs, Notification.cs, SystemConfig.cs
+│   │   └── Enums/
+│   │       ├── BookingStatus.cs, LedgerEntryType.cs, RewardType.cs
+│   │       └── NotificationType.cs, SystemUserRole.cs
+│   └── Migrations/     (all existing migration files)
+```
+
+Update all namespaces: `AutoWashPro.API.Data.*` → `AutoWashPro.DAL.Data.*`
+
+##### Step 5 — Move files from API into BLL
+
+Move `Services/`, `Common/`, and `DTOs/` into `AutoWashPro.BLL/`:
+
+```text
+AutoWashPro.BLL/
+├── Services/
+│   ├── Interfaces/   (all IXxxService.cs files)
+│   └── (all XxxService.cs implementation files)
+├── DTOs/
+│   └── Auth/, Booking/, Checkout/, Customer/, Service/, Admin/
+└── Common/
+    ├── Result.cs, AppConstants.cs
+    └── Extensions/DateTimeExtensions.cs
+```
+
+Update all namespaces:
+
+- `AutoWashPro.API.Services.*` → `AutoWashPro.BLL.Services.*`
+- `AutoWashPro.API.DTOs.*` → `AutoWashPro.BLL.DTOs.*`
+- `AutoWashPro.API.Common.*` → `AutoWashPro.BLL.Common.*`
+
+##### Step 6 — What stays in API (no move needed)
+
+```text
+AutoWashPro.API/
+├── Controllers/       (all controllers — update using statements only)
+├── Middleware/        (ExceptionHandlingMiddleware, RequestLoggingMiddleware)
+├── Jobs/              (MonthlyMaintenanceJob — registered as IHostedService in API)
+├── Program.cs         (update using statements; service registrations unchanged)
+├── appsettings*.json
+└── Properties/launchSettings.json
+```
+
+##### Step 7 — Update all `using` statements
+
+Every file that previously referenced `AutoWashPro.API.Data`, `AutoWashPro.API.Services`, `AutoWashPro.API.DTOs`, or `AutoWashPro.API.Common` must be updated to the new namespaces. Affected files: all Controllers, Middleware, Jobs, and Program.cs.
+
+##### Step 8 — Update EF Core migration commands
+
+DbContext is now in DAL; startup project remains API. Run from inside `AutoWashPro.API/`:
+
+```sh
+dotnet ef migrations add <MigrationName> --project ../AutoWashPro.DAL/AutoWashPro.DAL.csproj --startup-project AutoWashPro.API.csproj
+dotnet ef database update --project ../AutoWashPro.DAL/AutoWashPro.DAL.csproj --startup-project AutoWashPro.API.csproj
+```
+
+##### Step 9 — Delete placeholder files
+
+- Delete `AutoWashPro.BLL/Class1.cs`
+- Delete `AutoWashPro.DAL/Class1.cs`
+
+##### Step 10 — Update AGENTS.md
+
+- Replace the single-project folder structure with the 3-project layout above
+- Remove the "Do NOT create additional projects" rule (it no longer applies)
+- Update NuGet package section to show which packages belong to which project
+- Update EF migration commands to use `--project` and `--startup-project` flags
+
+##### Step 11 — Build and smoke test
+
+```sh
+dotnet build   # run from solution root — must have 0 errors, 3 projects built
+dotnet run     # run from AutoWashPro.API/ — Swagger UI must load at /swagger
+```
+
+Verify at least one endpoint per layer is reachable (e.g., `GET /api/services` exercises the full API → BLL → DAL chain).
+
+**Deliverable:** Solution builds cleanly with 3 projects. `dotnet run` starts without error. All 31 endpoints respond correctly. EF migration commands work with `--project`/`--startup-project` flags.
+
+---
+
+### Phase 9 — Frontend (Staff & Admin)
+
+**Goal:** Working browser UI for the Staff and Admin roles, pixel-matched to the `design-prototype/` screens and wired to the live API at `http://localhost:5001/api`.
+
+**Project location:** `AutoWashPro.Web/` at the solution root (sibling to `AutoWashPro.API/`).
+
+**Reference files — read before implementing:**
+
+- `design-prototype/index.html` — canvas layout; shows which screens exist and how they are framed
+- `design-prototype/styles.css` — complete design system (CSS variables, component classes); copy this file, do not rewrite it
+- `design-prototype/shared.jsx` — icon SVG paths, mock data shapes, `TierBadge`, `StatusPill`, `formatVND` — port these to React components/utils
+- `design-prototype/staff-screens.jsx` — exact layout for all 3 Staff screens
+- `design-prototype/admin-screens.jsx` — exact layout for all 6 Admin screens
+
+**Tech choices (final — do not deviate):**
+
+| Concern | Choice | Reason |
+| --- | --- | --- |
+| Framework | React 18 + Vite 5 | Matches design target |
+| Routing | React Router v6 | Standard; `<ProtectedRoute>` pattern |
+| HTTP | Axios | Interceptors for auth header + 401 redirect |
+| CSS | Copy `design-prototype/styles.css` as-is | Design system already complete — no Tailwind needed |
+| Component library | None — use `.aw-*` CSS classes from design system | Library would conflict with existing classes |
+| Charts | Recharts | Admin dashboard bar + donut charts |
+| JWT decode | `jwt-decode` v4 | Read role claim without an extra API call |
+| Fonts | Google Fonts CDN in `index.html` | Be Vietnam Pro (300–800) + Geist Mono (400,500) |
+
+**Folder structure:**
+
+```text
+AutoWashPro.Web/
+├── src/
+│   ├── api/
+│   │   ├── client.js          ← axios instance + interceptors
+│   │   ├── auth.js            ← login functions
+│   │   ├── bookings.js        ← queue, complete, walk-in
+│   │   ├── services.js        ← services + pricing CRUD
+│   │   ├── promotions.js      ← promotions CRUD
+│   │   ├── tiers.js           ← tiers read/update
+│   │   ├── customers.js       ← customers list + tier override
+│   │   └── reports.js         ← summary report
+│   ├── components/
+│   │   ├── icons.jsx          ← all Icons.* from shared.jsx (same SVG paths)
+│   │   ├── badges.jsx         ← TierBadge, StatusPill
+│   │   ├── layout/
+│   │   │   ├── AdminShell.jsx ← dark sidebar + topbar (props: active, title, subtitle, children, headerActions)
+│   │   │   └── StaffShell.jsx ← dark sidebar + nav (props: active, onChange, children, title, headerRight)
+│   │   └── ProtectedRoute.jsx ← role-guard wrapper
+│   ├── pages/
+│   │   ├── staff/
+│   │   │   ├── StaffLogin.jsx
+│   │   │   ├── StaffQueue.jsx
+│   │   │   └── StaffWalkin.jsx
+│   │   └── admin/
+│   │       ├── AdminLogin.jsx
+│   │       ├── AdminDashboard.jsx
+│   │       ├── AdminServices.jsx
+│   │       ├── AdminPromotions.jsx
+│   │       ├── AdminTiers.jsx
+│   │       └── AdminCustomers.jsx
+│   ├── hooks/
+│   │   └── useAuth.js         ← token read/write, role decode, isAuthenticated
+│   ├── styles/
+│   │   └── design-system.css  ← copied verbatim from design-prototype/styles.css
+│   └── main.jsx               ← React root + router
+├── index.html                 ← Google Fonts link tags here
+├── vite.config.js
+└── package.json
+```
+
+#### Implementation Steps
+
+##### Task 1 — Scaffold and configure
+
+```sh
+# From solution root
+npm create vite@latest AutoWashPro.Web -- --template react
+cd AutoWashPro.Web
+npm install react-router-dom axios jwt-decode recharts
+```
+
+- Copy `../design-prototype/styles.css` → `src/styles/design-system.css` (verbatim, no edits)
+- Delete Vite default `src/index.css`, `src/App.css`, `src/App.jsx`, `src/assets/`
+- `index.html`: add Google Fonts `<link>` for Be Vietnam Pro + Geist Mono; add `<title>AutoWash Pro</title>`
+- `main.jsx`: import `./styles/design-system.css`; render `<RouterProvider>` with the route table
+
+`vite.config.js`:
+
+```js
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 5173,
+    proxy: { '/api': 'http://localhost:5001' },
+  },
+})
+```
+
+##### Task 2 — API client (`src/api/client.js`)
+
+```js
+import axios from 'axios'
+
+const client = axios.create({ baseURL: '/api' })
+
+client.interceptors.request.use(cfg => {
+  const token = localStorage.getItem('aw_token')
+  if (token) cfg.headers.Authorization = `Bearer ${token}`
+  return cfg
+})
+
+client.interceptors.response.use(
+  r => r,
+  err => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem('aw_token')
+      const path = window.location.pathname.startsWith('/admin') ? '/admin/login' : '/staff/login'
+      window.location.href = path
+    }
+    return Promise.reject(err)
+  }
+)
+
+export default client
+```
+
+##### Task 3 — Auth hook (`src/hooks/useAuth.js`)
+
+```js
+import { jwtDecode } from 'jwt-decode'
+
+const TOKEN_KEY = 'aw_token'
+const ROLE_CLAIM = 'http://schemas.microsoft.com/ws/2008/06/identity/claims/role'
+
+export function getToken()       { return localStorage.getItem(TOKEN_KEY) }
+export function setToken(jwt)    { localStorage.setItem(TOKEN_KEY, jwt) }
+export function clearToken()     { localStorage.removeItem(TOKEN_KEY) }
+
+export function getRole() {
+  const t = getToken()
+  if (!t) return null
+  try { return jwtDecode(t)[ROLE_CLAIM] ?? null } catch { return null }
+}
+
+export function isAuthenticated() {
+  const t = getToken()
+  if (!t) return false
+  try {
+    const { exp } = jwtDecode(t)
+    return Date.now() < exp * 1000
+  } catch { return false }
+}
+```
+
+##### Task 4 — Protected route (`src/components/ProtectedRoute.jsx`)
+
+- Props: `{ role, children }` where `role` is `"Staff"` or `"Admin"`
+- If `!isAuthenticated()` or `getRole() !== role`: redirect to `/staff/login` (Staff) or `/admin/login` (Admin)
+- Otherwise render `children`
+
+##### Task 5 — Router (`src/main.jsx`)
+
+```text
+/                    → <Navigate to="/staff/login" />
+/staff/login         → <StaffLogin />
+/staff/queue         → <ProtectedRoute role="Staff"><StaffQueue /></ProtectedRoute>
+/staff/walkin        → <ProtectedRoute role="Staff"><StaffWalkin /></ProtectedRoute>
+/admin/login         → <AdminLogin />
+/admin/dashboard     → <ProtectedRoute role="Admin"><AdminDashboard /></ProtectedRoute>
+/admin/services      → <ProtectedRoute role="Admin"><AdminServices /></ProtectedRoute>
+/admin/promotions    → <ProtectedRoute role="Admin"><AdminPromotions /></ProtectedRoute>
+/admin/tiers         → <ProtectedRoute role="Admin"><AdminTiers /></ProtectedRoute>
+/admin/customers     → <ProtectedRoute role="Admin"><AdminCustomers /></ProtectedRoute>
+```
+
+##### Task 6 — Shared components
+
+**`src/components/icons.jsx`** — port all `Icons.*` entries from `design-prototype/shared.jsx` verbatim. Export as named exports: `export const Icons = { Phone, Lock, User, ... }`.
+
+**`src/components/badges.jsx`**:
+
+- `TierBadge({ tier, size })` — renders `.aw-tier-badge .aw-tier-{dong|bac|vang|platinum}` span with star SVG. `tier` values: `"dong"`, `"bac"`, `"vang"`, `"platinum"`.
+- `StatusPill({ status })` — renders colored dot + label for `upcoming | completed | cancelled | in-progress | queued | active | expired`
+
+**`src/components/layout/AdminShell.jsx`** — dark sidebar with:
+
+- Logo (Droplet icon + "AutoWash Pro" + "QUẢN TRỊ")
+- Nav items: Tổng quan, Dịch vụ & giá, Khuyến mãi, Hạng thành viên, Khách hàng, Báo cáo (bottom: Cài đặt, Đăng xuất)
+- Active item determined by `active` prop; click calls `useNavigate`
+- Top content area with `title`, `subtitle`, `headerActions` slot
+- `clearToken()` + navigate to `/admin/login` on logout
+
+**`src/components/layout/StaffShell.jsx`** — dark sidebar with:
+
+- Logo (Droplet icon + "AutoWash" + "NHÂN VIÊN")
+- Nav: Hàng chờ (badge = live queue count), Khách vãng lai, Lịch sử
+- `clearToken()` + navigate to `/staff/login` on logout
+
+**Formatting utils** (inline in components or a `src/utils/format.js`):
+
+```js
+export const formatVND = n => n.toLocaleString('vi-VN') + '₫'
+export const formatVNDShort = n =>
+  n >= 1_000_000 ? (n / 1_000_000).toFixed(1).replace('.0','') + 'tr' :
+  n >= 1_000     ? (n / 1_000).toFixed(0) + 'K' : String(n)
+```
+
+##### Task 7 — Staff screens
+
+**StaffLogin** — mirrors `design-prototype/staff-screens.jsx` `StaffLogin` component:
+
+- Left dark panel (shop name, stats placeholder)
+- Right: "Đăng nhập hệ thống" heading, email field, password field (toggle visibility), "Đăng nhập" primary button
+- On submit: `POST /api/auth/system/login` `{ email, password }`
+- On success: `setToken(data.token)` → `navigate('/staff/queue')` if role = `Staff`, `navigate('/admin/dashboard')` if role = `Admin`
+- On 401: show inline error "Email hoặc mật khẩu không đúng."
+
+**StaffQueue** — mirrors `StaffQueue` component in prototype:
+
+- On mount: `GET /api/admin/bookings/queue` — render rows sorted by `scheduledAt`
+- Left panel: list of booking rows (time, name, plate, service, status badge); clicking a row selects it
+- Right panel: selected booking detail — ID, customer, plate, service, price, status
+- "Hoàn tất" button at bottom of detail panel:
+  - `POST /api/admin/bookings/{id}/complete` with body `{ pointsToRedeem: 0 }`
+  - On success: remove row from list, show brief success message "Hoàn tất!" in panel
+- If no booking selected: show empty-state placeholder
+- Map API `BookingStatus` → badge: `Confirmed` → `queued`, `Completed` → `completed`, `Cancelled` → `cancelled`
+- Show today's date in header; show count of remaining/total bookings
+
+**StaffWalkin** — mirrors `StaffWalkin` component in prototype:
+
+- On mount: `GET /api/services` → service list
+- Form:
+  - WalkInPhone (text)
+  - WalkInLicensePlate (text)
+  - Scheduled date+time (`<input type="datetime-local">`)
+  - Service selector: radio list of services (name + price + duration label)
+- Right panel: live bill summary (selected service name + price, total)
+- On submit: `POST /api/admin/bookings/walk-in` with body:
+
+  ```json
+  { "walkInPhone": "...", "walkInLicensePlate": "...", "scheduledAt": "ISO8601", "pricingId": "..." }
+  ```
+
+- On success: show "Đặt thành công — BK-XXXX" and reset form
+- On error: show API error message inline
+
+##### Task 8 — Admin screens
+
+**AdminLogin** — same layout/logic as StaffLogin. On success: redirect to `/admin/dashboard` (role must be `Admin`).
+
+**AdminDashboard** — mirrors `AdminDashboard` in prototype:
+
+- On mount: `GET /api/admin/reports/summary` → KPI data
+- 4 KPI tiles: revenue today (`totalRevenue`), bookings today (`totalBookings`), active customers (`activeCustomers`), slot utilisation (`slotUtilisation` %)
+- If the summary endpoint returns revenue history (last 7 days), render `BarChart` from Recharts; otherwise show a static 7-day bar chart with placeholder values
+- Tier distribution: `PieChart` (Recharts) using customer counts by tier; use mock if not in API response
+- Recent activity: last 5 rows from queue or summary; table with columns: time, customer, service, status badge, amount
+
+**AdminServices** — mirrors `AdminServices` in prototype:
+
+- On mount: `GET /api/services` → service list
+- Left: `.aw-table` of services (name, description, active). Clicking row → select
+- "Novo serviço" button clears selection (new-mode)
+- Right edit panel:
+  - Name, Description text fields; Save (`PUT /api/admin/services/{id}`)
+  - Pricing sub-table: list pricing variants for selected service (`GET /api/services/{id}/pricing`)
+  - Each variant row: duration (min), price (VND); inline edit on click
+  - "Add variant" row at bottom: duration + price inputs + confirm button (`POST /api/admin/services/{id}/pricing`)
+  - Save variant: `PUT /api/admin/services/{id}/pricing/{pricingId}`
+  - Create new service: `POST /api/admin/services` with `{ name, description }`
+
+**AdminPromotions** — mirrors `AdminPromotions` in prototype:
+
+- On mount: `GET /api/admin/promotions?page=1&pageSize=20`
+- Active promotions as cards (2-col grid): code, title, reward type, reward value, usage/max, date range
+- Below: full `.aw-table` of all promotions with status badge
+- "Tạo khuyến mãi" button → show create panel (slide-in or section):
+  - Fields: code, title, description, rewardType (select: Discount/BonusPoints/FreeWash), rewardValue, startDate, endDate, minOrderValue (optional), maxUsage
+  - Submit: `POST /api/admin/promotions`
+- Click row → load edit panel (`PUT /api/admin/promotions/{id}`)
+- Delete button (trash icon): `DELETE /api/admin/promotions/{id}` with confirm
+
+**AdminTiers** — mirrors `AdminTiers` in prototype:
+
+- On mount: `GET /api/admin/tiers` → 4 tier rows
+- 4 tier cards (Đồng / Bạc / Vàng / Bạch Kim) with colored header
+- Each card shows: bookingWindowDays, pointsPerWash, minVisitsPerMonth, minSpendPerMonth
+- Click card → editable fields inline; "Lưu" saves (`PUT /api/admin/tiers/{id}`)
+- Live preview bar at bottom: horizontal gradient bar showing tier thresholds (use `minSpendPerMonth` values)
+
+**AdminCustomers** — mirrors `AdminCustomers` in prototype:
+
+- On mount: `GET /api/admin/customers?page=1&pageSize=20`
+- Search input: re-queries with `?search=` param on input change (debounced 300ms)
+- `.aw-table`: name, phone, tier badge, points balance, visit count, total spent
+- Clicking row → right detail panel: customer info + tier override
+- Tier override: `<select>` with 4 tier options + "Áp dụng" button → `PUT /api/admin/customers/{id}/tier` with body `{ tierId: "..." }`
+- On success: update tier badge in table row; show "Cập nhật thành công" in panel
+
+##### Task 9 — CORS allow-list
+
+Add `http://localhost:5173` to `AutoWashPro.API/appsettings.json` under `Cors:AllowedOrigins` so the browser can call the API directly when the Vite proxy is not used.
+
+```json
+"Cors": {
+  "AllowedOrigins": [ "http://localhost:5173" ]
+}
+```
+
+##### Task 10 — Deliverable checks
+
+```sh
+cd AutoWashPro.Web
+npm run dev        # must start at http://localhost:5173 with no console errors
+```
+
+- Staff login (valid credentials) → navigates to `/staff/queue`
+- Queue page loads real bookings from the API (no hardcoded mock data)
+- "Hoàn tất" button on a queued booking completes it end-to-end
+- Walk-in form submits successfully and resets
+- Admin login → navigates to `/admin/dashboard`
+- All 5 Admin pages render without console errors
+- Refreshing any protected page while logged in stays on that page (token persists)
+- Refreshing while logged out redirects to the appropriate login
+
+**Deliverable:** `npm run dev` runs. Staff and Admin roles can log in, view data from the live API, and perform their primary actions (complete booking, create walk-in, CRUD services/promotions/tiers, tier override).
+
+---
+
+### Phase 10 — VehicleType FK Fix, Service & Performance Improvements
+
+**Goal:** Connect the orphaned `VehicleType` table via real foreign keys, and improve service/query/caching/frontend performance. Implemented directly by Claude at the user's explicit request (one-time exception to the Claude/Codex split).
+
+**10.1 — VehicleType foreign keys (the bug fix)**
+- `Vehicle.VehicleType` and `ServicePricing.VehicleType` were free-text `string` columns; the seeded `VehicleType` table was referenced by nothing.
+- Replaced both with `Guid VehicleTypeId` FK + `VehicleType` nav property; added FK config in `AppDbContext` (`ConfigureVehicle`, `ConfigureServicePricing`) with `DeleteBehavior.NoAction`.
+- Migration `AddVehicleTypeForeignKeys`: hand-edited for safe in-place migration — add nullable `VehicleTypeId`, backfill by matching the old string against `VehicleTypes.Name` (fallback to first seeded type), set NOT NULL, drop old columns, add FK + indexes. **Preserves existing data** (verified: 6 vehicles + 4 pricing rows, 0 orphans).
+- DTOs: `CreateVehicleDto`/`CreatePricingDto` take `VehicleTypeId`; `VehicleDto`/`ServicePricingDto` expose `VehicleTypeId` + `VehicleTypeName`; `BookingResponseDto.VehicleType` → `VehicleTypeName`.
+- Services validate `VehicleTypeId` exists/active; `Include(p => p.VehicleType)` where the name is projected.
+- Frontend (`AdminServices`, `CustomerVehicles`, `StaffWalkin`, `StaffQueue`, `StaffHistory`, `CustomerBookings`, `CustomerDashboard`) send `vehicleTypeId` and display `vehicleTypeName`.
+- The `(ServiceId, VehicleTypeId)` index is **non-unique** (D12): legacy data has duplicate pairs referenced by bookings; app-layer check still blocks new duplicates.
+
+**10.2 — DB indexes & query optimization**
+- Migration `AddPerformanceIndexes`: `Booking (ScheduledAt, Status)`, `PointsLedger (CustomerId, Type)`, `PointsLedger (ExpiryDate)`. (FK indexes on `Booking.CustomerId/PricingId` already existed.)
+- `BookingService` capacity checks (`IsRangeAvailableAsync`, `GetAvailabilityAsync`) rewritten from per-sub-slot `COUNT` queries to **one** query + in-memory concurrency calc — BR-01 semantics unchanged.
+- `MonthlyMaintenanceJob`: point-expiry loop now derives candidates from the ledger (skips customers with nothing to expire); tier review uses one grouped stats query + a single commit instead of 2–3 queries per customer.
+
+**10.3 — Caching & response compression**
+- `AddMemoryCache` + `CatalogCache` singleton (group eviction via `CancellationChangeToken`) caches services/pricing/vehicle-types/tiers; invalidated on every catalogue write.
+- `AddResponseCompression` (Brotli + Gzip, Fastest) — verified `Content-Encoding: br`.
+- `Cache-Control: public, max-age=30` on public `GET /api/services` + `/pricing` (not on the shared `/vehicle-types`, to avoid admin staleness after add/delete).
+- `VehicleTypeController.Delete` now guards against in-use types (FK would otherwise throw).
+
+**10.4 — Shared pagination helper**
+- `QueryableExtensions.ToPagedResultAsync(query, page, pageSize, map)` (Skip/Take in SQL, map in memory). Replaced duplicated pagination in `BookingService`, `ServiceCatalogService`, `CustomerService`, `PromotionService`, and `AdminCustomerController`.
+
+**10.5 — Frontend bundle & load performance**
+- `main.jsx`: all route pages `React.lazy` + `Suspense` (Login stays eager).
+- `vite.config.js`: `manualChunks` vendor split — recharts (360 KB) isolated to `vendor-charts`, only loaded on the admin dashboard.
+- `vehicleTypes.js`: module-level promise cache, invalidated on create/delete.
+
+**Deliverable:** Solution builds (3 projects, 0 errors); both migrations applied to the dev DB preserving data; runtime smoke tests pass (vehicle-types/services/pricing shapes, Brotli compression, Cache-Control, 401 on protected routes); frontend builds with split chunks; lint clean.
+
+---
+
 ## SECTION 4 — Supporting Files
 
 | File | Purpose | Load when |
-|------|---------|----------|
+| --- | --- | --- |
 | `CLAUDE.md` | Planning context, decisions, issue tracker, phase status | Claude starts a new session |
-| `CODEX.md` | Entity specs, conventions, patterns, EF config rules | Codex begins implementing a phase |
-| `AGENT.md` | Quick codebase reference for in-editor autocomplete | Copilot is active in any source file |
+| `AGENTS.md` | Entity specs, conventions, patterns, EF config rules, 3-layer structure | Codex begins implementing a phase |
+| `.github/copilot-instructions.md` | Quick codebase reference for in-editor autocomplete | Copilot is active in any source file (auto-loaded) |
+| `AGENT.md` | Same as above — kept for manual reference | When not using Copilot auto-load |
 
 ---
 
@@ -246,3 +742,6 @@
 | 5 — Admin Config & Reports | ✅ Completed | Admin tier/promotion/customer configuration and operational report endpoints implemented |
 | 6 — Background Jobs | ✅ Completed | Monthly maintenance job, point expiry, tier review, persisted run flag, and near-expiry notifications implemented |
 | 7 — Quality & Polish | ✅ Completed | Request logging, Swagger bearer docs, XML docs, pagination audit, production config template, and validation polish implemented |
+| 8 — 3-Layer Refactor | ✅ Completed | Data moved to DAL, Services/DTOs/Common moved to BLL, project refs/namespaces/EF commands/AGENTS.md updated, solution builds cleanly; API keeps EF Design as startup-project tooling only |
+| 9 — Frontend (Staff & Admin) | ✅ Completed | React/Vite frontend scaffolded in AutoWashPro.Web, prototype CSS copied, staff/admin routes wired to API clients, lint/build/dev-server checks pass |
+| 10 — VehicleType FK & Performance | ✅ Completed | VehicleType connected via FK (in-place data migration); capacity/maintenance N+1 queries collapsed; memory cache + Brotli/Gzip compression; shared pagination helper; frontend route code-splitting + vendor chunks. Builds/migrations/smoke-tests/lint all pass |

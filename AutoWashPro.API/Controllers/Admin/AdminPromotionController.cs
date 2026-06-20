@@ -1,5 +1,5 @@
-using AutoWashPro.API.DTOs.Admin;
-using AutoWashPro.API.Services.Interfaces;
+using AutoWashPro.BLL.DTOs.Admin;
+using AutoWashPro.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 

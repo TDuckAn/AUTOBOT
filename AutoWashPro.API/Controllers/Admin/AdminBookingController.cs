@@ -1,7 +1,7 @@
 using System.Security.Claims;
-using AutoWashPro.API.Data.Entities.Enums;
-using AutoWashPro.API.DTOs.Booking;
-using AutoWashPro.API.Services.Interfaces;
+using AutoWashPro.DAL.Data.Entities.Enums;
+using AutoWashPro.BLL.DTOs.Booking;
+using AutoWashPro.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 

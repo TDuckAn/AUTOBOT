@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
 using System.Data;
-using AutoWashPro.API.Data;
-using AutoWashPro.API.Data.Entities;
-using AutoWashPro.API.Data.Entities.Enums;
+using AutoWashPro.DAL.Data;
+using AutoWashPro.DAL.Data.Entities;
+using AutoWashPro.DAL.Data.Entities.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace AutoWashPro.API.Jobs;
@@ -143,9 +143,12 @@ public class MonthlyMaintenanceJob(
         string runMonth,
         CancellationToken cancellationToken)
     {
-        var customerIds = await db.Customers
-            .Where(customer => customer.PhoneNumber != "WALK-IN")
-            .Select(customer => customer.CustomerId)
+        // Only customers with at least one already-expired Earn entry can have points to
+        // expire — derive candidates from the ledger instead of scanning every customer.
+        var customerIds = await db.PointsLedgers
+            .Where(entry => entry.Type == LedgerEntryType.Earn && entry.ExpiryDate <= today)
+            .Select(entry => entry.CustomerId)
+            .Distinct()
             .ToListAsync(cancellationToken);
 
         foreach (var customerId in customerIds)
@@ -211,9 +214,9 @@ public class MonthlyMaintenanceJob(
 
     private async Task RunTierReviewAsync(AppDbContext db, DateOnly today, CancellationToken cancellationToken)
     {
-        var customerIds = await db.Customers
+        var customers = await db.Customers
+            .Include(entity => entity.TierConfig)
             .Where(customer => customer.PhoneNumber != "WALK-IN")
-            .Select(customer => customer.CustomerId)
             .ToListAsync(cancellationToken);
 
         var tiers = await db.TierConfigs
@@ -223,51 +226,63 @@ public class MonthlyMaintenanceJob(
         var reviewEnd = today.ToDateTime(TimeOnly.MinValue).AddDays(1);
         var reviewStart = reviewEnd.AddDays(-30);
 
-        foreach (var customerId in customerIds)
-        {
-            await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
-
-            var customer = await db.Customers
-                .Include(entity => entity.TierConfig)
-                .SingleOrDefaultAsync(entity => entity.CustomerId == customerId, cancellationToken);
-            if (customer is null)
-            {
-                await tx.RollbackAsync(cancellationToken);
-                continue;
-            }
-
-            var completedBookings = db.Bookings.Where(booking =>
-                booking.CustomerId == customerId
+        // One grouped query for visit count + spend per customer over the 30-day window,
+        // replacing the previous two queries per customer.
+        var stats = await db.Bookings
+            .Where(booking =>
+                booking.CustomerId != null
                 && booking.Status == BookingStatus.Completed
                 && booking.CompletedAt >= reviewStart
-                && booking.CompletedAt < reviewEnd);
+                && booking.CompletedAt < reviewEnd)
+            .GroupBy(booking => booking.CustomerId)
+            .Select(group => new
+            {
+                CustomerId = group.Key,
+                Visits = group.Count(),
+                Spend = group.Sum(booking => booking.FinalPrice)
+            })
+            .ToListAsync(cancellationToken);
+        var statsByCustomer = stats
+            .Where(stat => stat.CustomerId.HasValue)
+            .ToDictionary(stat => stat.CustomerId!.Value);
 
-            var visitCount = await completedBookings.CountAsync(cancellationToken);
-            var spend = await completedBookings.SumAsync(booking => (decimal?)booking.FinalPrice, cancellationToken) ?? 0m;
+        var changed = false;
+        foreach (var customer in customers)
+        {
+            statsByCustomer.TryGetValue(customer.CustomerId, out var stat);
+            var visitCount = stat?.Visits ?? 0;
+            var spend = stat?.Spend ?? 0m;
             var eligibleTier = tiers.First(tier =>
                 visitCount >= tier.MinVisitsPerMonth
                 && spend >= tier.MinSpendPerMonth);
 
-            if (eligibleTier.TierId != customer.TierId)
+            if (eligibleTier.TierId == customer.TierId)
             {
-                var now = DateTime.UtcNow;
-                var oldTier = customer.TierConfig.TierName;
-                customer.TierId = eligibleTier.TierId;
-                customer.TierConfig = eligibleTier;
-                customer.UpdatedAt = now;
-
-                db.Notifications.Add(new Notification
-                {
-                    NotificationId = Guid.NewGuid(),
-                    CustomerId = customerId,
-                    Title = "Tier updated",
-                    Message = $"Your tier changed from {oldTier} to {eligibleTier.TierName}.",
-                    Type = NotificationType.TierChange,
-                    IsRead = false,
-                    CreatedAt = now
-                });
+                continue;
             }
 
+            var now = DateTime.UtcNow;
+            var oldTier = customer.TierConfig.TierName;
+            customer.TierId = eligibleTier.TierId;
+            customer.TierConfig = eligibleTier;
+            customer.UpdatedAt = now;
+
+            db.Notifications.Add(new Notification
+            {
+                NotificationId = Guid.NewGuid(),
+                CustomerId = customer.CustomerId,
+                Title = "Tier updated",
+                Message = $"Your tier changed from {oldTier} to {eligibleTier.TierName}.",
+                Type = NotificationType.TierChange,
+                IsRead = false,
+                CreatedAt = now
+            });
+            changed = true;
+        }
+
+        if (changed)
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             await tx.CommitAsync(cancellationToken);
         }

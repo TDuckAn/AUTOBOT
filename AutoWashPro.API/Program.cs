@@ -1,13 +1,17 @@
+using System.IO.Compression;
 using System.Reflection;
 using System.Text;
-using AutoWashPro.API.Data;
-using AutoWashPro.API.Data.Entities;
-using AutoWashPro.API.Data.Entities.Enums;
+using System.Text.Json.Serialization;
+using AutoWashPro.DAL.Data;
+using AutoWashPro.DAL.Data.Entities;
+using AutoWashPro.DAL.Data.Entities.Enums;
+using AutoWashPro.API.Caching;
 using AutoWashPro.API.Jobs;
 using AutoWashPro.API.Middleware;
-using AutoWashPro.API.Services;
-using AutoWashPro.API.Services.Interfaces;
+using AutoWashPro.BLL.Services;
+using AutoWashPro.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -71,7 +75,22 @@ builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddScoped<ILoyaltyService, LoyaltyService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IPromotionService, PromotionService>();
+builder.Services.AddScoped<IVoucherService, VoucherService>();
 builder.Services.AddHostedService<MonthlyMaintenanceJob>();
+
+// In-memory cache for read-heavy catalogue data (services, pricing, vehicle types, tiers).
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<CatalogCache>();
+
+// Compress API responses (JSON) to cut payload size over the wire.
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+});
+builder.Services.Configure<BrotliCompressionProviderOptions>(options => options.Level = CompressionLevel.Fastest);
+builder.Services.Configure<GzipCompressionProviderOptions>(options => options.Level = CompressionLevel.Fastest);
 
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
 builder.Services.AddCors(options =>
@@ -84,7 +103,11 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -137,13 +160,14 @@ var app = builder.Build();
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseMiddleware<RequestLoggingMiddleware>();
+app.UseResponseCompression();
+app.UseSwagger();
+app.UseSwaggerUI();
 app.UseHttpsRedirection();
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-app.UseSwagger();
-app.UseSwaggerUI();
 
 app.Run();
 

@@ -1,5 +1,6 @@
-using AutoWashPro.API.DTOs.Service;
-using AutoWashPro.API.Services.Interfaces;
+using AutoWashPro.API.Caching;
+using AutoWashPro.BLL.DTOs.Service;
+using AutoWashPro.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -10,10 +11,19 @@ namespace AutoWashPro.API.Controllers.Admin;
 [Route("api/admin/services")]
 public class AdminServiceController(
     IServiceCatalogService serviceCatalogService,
+    CatalogCache catalogCache,
     ILogger<AdminServiceController> logger) : ControllerBase
 {
     private readonly IServiceCatalogService _serviceCatalogService = serviceCatalogService;
+    private readonly CatalogCache _catalogCache = catalogCache;
     private readonly ILogger<AdminServiceController> _logger = logger;
+
+    [HttpGet]
+    public async Task<IActionResult> ListServices([FromQuery] int page = 1, [FromQuery] int pageSize = 100)
+    {
+        var result = await _serviceCatalogService.ListAllServicesAsync(page, pageSize);
+        return result.IsSuccess ? Ok(result.Value) : BadRequest(result.Error);
+    }
 
     [HttpPost]
     public async Task<IActionResult> CreateService(CreateServiceDto request)
@@ -24,6 +34,7 @@ public class AdminServiceController(
             return BadRequest(result.Error);
         }
 
+        _catalogCache.Invalidate();
         _logger.LogInformation("Admin created service {ServiceId}.", result.Value!.ServiceId);
         return CreatedAtAction(
             nameof(ServiceController.GetPricing),
@@ -36,6 +47,11 @@ public class AdminServiceController(
     public async Task<IActionResult> UpdateService(Guid id, CreateServiceDto request)
     {
         var result = await _serviceCatalogService.UpdateServiceAsync(id, request);
+        if (result.IsSuccess)
+        {
+            _catalogCache.Invalidate();
+        }
+
         return result.IsSuccess ? Ok(result.Value) : BadRequest(result.Error);
     }
 
@@ -43,6 +59,11 @@ public class AdminServiceController(
     public async Task<IActionResult> AddPricing(Guid id, CreatePricingDto request)
     {
         var result = await _serviceCatalogService.AddPricingAsync(id, request);
+        if (result.IsSuccess)
+        {
+            _catalogCache.Invalidate();
+        }
+
         return result.IsSuccess ? Ok(result.Value) : BadRequest(result.Error);
     }
 
@@ -50,6 +71,12 @@ public class AdminServiceController(
     public async Task<IActionResult> UpdatePricing(Guid id, Guid pricingId, CreatePricingDto request)
     {
         var result = await _serviceCatalogService.UpdatePricingAsync(id, pricingId, request);
+        if (result.IsSuccess)
+        {
+            _catalogCache.Invalidate();
+        }
+
         return result.IsSuccess ? Ok(result.Value) : BadRequest(result.Error);
     }
+
 }

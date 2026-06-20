@@ -33,3 +33,5 @@ logs/
 ## Test results
 TestResults/
 coverage/
+api_err.txt
+api_out.txt

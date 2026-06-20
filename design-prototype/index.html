@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>AutoWash Pro — Prototype</title>
+<link rel="stylesheet" href="styles.css"/>
+<style>
+  body { background: #d4d4d8; }
+  .ds-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    padding: 20px;
+  }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Frames -->
+  <script type="text/babel" src="browser-window.jsx"></script>
+  <script type="text/babel" src="design-canvas.jsx"></script>
+
+  <!-- App -->
+  <script type="text/babel" src="shared.jsx"></script>
+  <script type="text/babel" src="staff-screens.jsx"></script>
+  <script type="text/babel" src="admin-screens.jsx"></script>
+
+  <script type="text/babel">
+    // ── Tablet frame ─────────────────────────────────────────────────────
+    function TabletFrame({ children }) {
+      return (
+        <div className="aw-tablet" style={{ width: 1180, height: 820 }}>
+          <div style={{ flex: 1, overflow: 'hidden', borderRadius: 14, background: 'var(--bg)' }}>
+            {children}
+          </div>
+        </div>
+      );
+    }
+
+    // ── Desktop frame ─────────────────────────────────────────────────────
+    function DesktopFrame({ children, url }) {
+      return (
+        <ChromeWindow width={1280} height={800} url={url}
+          tabs={[{ title: 'AutoWash Pro — Admin' }]} activeIndex={0}>
+          <div style={{ height: '100%', overflow: 'hidden' }}>{children}</div>
+        </ChromeWindow>
+      );
+    }
+
+    // ── Design system card ────────────────────────────────────────────────
+    function DesignSystemCard() {
+      const swatches = [
+        { name: 'Primary',   color: 'oklch(52% 0.12 210)', label: 'Ocean Teal' },
+        { name: 'Green',     color: 'oklch(62% 0.14 158)', label: 'Fresh Green' },
+        { name: 'Gold',      color: 'oklch(76% 0.14 76)',  label: 'Loyalty Gold' },
+        { name: 'Danger',    color: 'oklch(56% 0.20 25)',  label: 'Error' },
+        { name: 'Ink 900',   color: '#09090b',             label: 'Zinc 950' },
+        { name: 'Ink 500',   color: '#71717a',             label: 'Zinc 500' },
+      ];
+      return (
+        <div style={{ width: 1180, background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)', overflow: 'hidden' }}>
+          {/* Header */}
+          <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icons.Droplet size={16} stroke="#fff" sw={2}/>
+            </div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.01em' }}>AutoWash Pro — Design System v2</div>
+              <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 1 }}>shadcn/ui · Linear · Stripe · Be Vietnam Pro + Geist Mono · Staff & Admin</div>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0 }}>
+            {/* Type */}
+            <div style={{ padding: '20px 22px', borderRight: '1px solid var(--border)' }}>
+              <Lbl>Typography</Lbl>
+              <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <TypeRow size={28} weight={800} label="28 / 800">Đăng nhập hệ thống</TypeRow>
+                <TypeRow size={18} weight={700} label="18 / 700">Hàng chờ hôm nay</TypeRow>
+                <TypeRow size={14} weight={500} label="14 / 500">Combo Vệ Sinh Toàn Phần</TypeRow>
+                <TypeRow size={12} weight={400} label="12 / 400" muted>Cập nhật lần cuối · 09:42</TypeRow>
+                <div style={{ padding: '8px 10px', background: 'var(--surface-2)', borderRadius: 5, border: '1px solid var(--border)' }}>
+                  <div style={{ fontFamily: "'Geist Mono',monospace", fontSize: 12, color: 'var(--ink-700)', fontWeight: 500 }}>
+                    59P1-234.56 · BK-1024 · 50.000₫
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--ink-400)', marginTop: 3 }}>Geist Mono · biển số / ID / số tiền</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Color + tier */}
+            <div style={{ padding: '20px 22px', borderRight: '1px solid var(--border)' }}>
+              <Lbl>Palette</Lbl>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginTop: 14 }}>
+                {swatches.map(s => (
+                  <div key={s.name}>
+                    <div style={{ height: 44, background: s.color, borderRadius: 6, border: '1px solid rgba(0,0,0,0.08)' }}/>
+                    <div style={{ fontSize: 11, fontWeight: 600, marginTop: 5 }}>{s.name}</div>
+                    <div style={{ fontSize: 10, color: 'var(--ink-400)', fontFamily: "'Geist Mono',monospace" }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 18 }}>
+                <Lbl>Tier ladder</Lbl>
+                <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                  {TIERS.map(t => (
+                    <div key={t.id} style={{ flex: 1 }}>
+                      <div style={{ height: 28, background: t.color, borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: '#fff' }}>{t.name}</span>
+                      </div>
+                      <div style={{ fontSize: 9, color: 'var(--ink-400)', textAlign: 'center', marginTop: 4 }}>{t.min === 0 ? '—' : t.min + '+'}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Components */}
+            <div style={{ padding: '20px 22px' }}>
+              <Lbl>Components</Lbl>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 14 }}>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <button className="aw-btn aw-btn-primary aw-btn-sm">Đặt rửa</button>
+                  <button className="aw-btn aw-btn-green aw-btn-sm">Hoàn tất</button>
+                  <button className="aw-btn aw-btn-ghost aw-btn-sm">Huỷ</button>
+                  <button className="aw-btn aw-btn-danger aw-btn-sm">Xoá</button>
+                </div>
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                  <span className="aw-badge aw-badge-green"><span style={{width:5,height:5,borderRadius:'50%',background:'currentColor',display:'inline-block'}}/>Hoàn tất</span>
+                  <span className="aw-badge aw-badge-amber"><span style={{width:5,height:5,borderRadius:'50%',background:'currentColor',display:'inline-block'}}/>Đang rửa</span>
+                  <span className="aw-badge aw-badge-blue"><span style={{width:5,height:5,borderRadius:'50%',background:'currentColor',display:'inline-block'}}/>Sắp tới</span>
+                  <span className="aw-badge aw-badge-neutral"><span style={{width:5,height:5,borderRadius:'50%',background:'currentColor',display:'inline-block'}}/>Chờ</span>
+                </div>
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                  <TierBadge tier="dong" size="sm"/>
+                  <TierBadge tier="bac" size="sm"/>
+                  <TierBadge tier="vang" size="sm"/>
+                  <TierBadge tier="platinum" size="sm"/>
+                </div>
+                <input className="aw-input" placeholder="Tìm kiếm..."/>
+                <div className="aw-card" style={{ padding: '10px 14px' }}>
+                  <div style={{ fontSize: 11, color: 'var(--ink-500)' }}>26/05 · 09:30</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>Combo Vệ Sinh Toàn Phần</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 12 }}>
+                    <span style={{ color: 'var(--ink-500)', fontFamily: "'Geist Mono',monospace" }}>51F-789.12</span>
+                    <b style={{ fontFamily: "'Geist Mono',monospace" }}>{formatVND(220000)}</b>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function Lbl({ children }) {
+      return <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink-500)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{children}</div>;
+    }
+
+    function TypeRow({ size, weight, label, muted, children }) {
+      return (
+        <div>
+          <div style={{ fontSize: size, fontWeight: weight, letterSpacing: size >= 20 ? '-0.02em' : 'normal', color: muted ? 'var(--ink-500)' : 'var(--ink-900)', lineHeight: 1.2 }}>{children}</div>
+          <div style={{ fontSize: 10, color: 'var(--ink-400)', marginTop: 3, fontFamily: "'Geist Mono',monospace" }}>{label}</div>
+        </div>
+      );
+    }
+
+    // ── App ───────────────────────────────────────────────────────────────
+    function App() {
+      return (
+        <DesignCanvas
+          title="AutoWash Pro"
+          subtitle="Staff · Admin · shadcn/ui + Linear + Stripe aesthetic · Be Vietnam Pro">
+
+          <DCSection id="ds" title="Design System v2" subtitle="shadcn/ui tokens · Linear sidebar · Stripe tables · Geist Mono">
+            <DCArtboard id="ds-1" label="Overview" width={1180} height={570}>
+              <DesignSystemCard/>
+            </DCArtboard>
+          </DCSection>
+
+          <DCSection id="staff" title="Staff · Tablet landscape" subtitle="3 screens · 1180×820 · Hàng chờ &amp; Khách vãng lai">
+            <DCArtboard id="s1" label="1 · Đăng nhập nhân viên" width={1180} height={820}>
+              <TabletFrame><StaffLogin/></TabletFrame>
+            </DCArtboard>
+            <DCArtboard id="s2" label="2 · Hàng chờ hôm nay" width={1180} height={820}>
+              <TabletFrame><StaffQueue/></TabletFrame>
+            </DCArtboard>
+            <DCArtboard id="s3" label="3 · Khách vãng lai" width={1180} height={820}>
+              <TabletFrame><StaffWalkin/></TabletFrame>
+            </DCArtboard>
+          </DCSection>
+
+          <DCSection id="admin" title="Admin · Desktop" subtitle="6 screens · 1280×800 · Linear dark sidebar + Stripe tables">
+            <DCArtboard id="a1" label="1 · Đăng nhập admin" width={1280} height={800}>
+              <DesktopFrame url="admin.autowash.vn/login"><AdminLogin/></DesktopFrame>
+            </DCArtboard>
+            <DCArtboard id="a2" label="2 · Tổng quan" width={1280} height={800}>
+              <DesktopFrame url="admin.autowash.vn/dashboard"><AdminDashboard/></DesktopFrame>
+            </DCArtboard>
+            <DCArtboard id="a3" label="3 · Dịch vụ & giá" width={1280} height={800}>
+              <DesktopFrame url="admin.autowash.vn/services"><AdminServices/></DesktopFrame>
+            </DCArtboard>
+            <DCArtboard id="a4" label="4 · Khuyến mãi" width={1280} height={800}>
+              <DesktopFrame url="admin.autowash.vn/promotions"><AdminPromotions/></DesktopFrame>
+            </DCArtboard>
+            <DCArtboard id="a5" label="5 · Cấu hình hạng" width={1280} height={800}>
+              <DesktopFrame url="admin.autowash.vn/tiers"><AdminTiers/></DesktopFrame>
+            </DCArtboard>
+            <DCArtboard id="a6" label="6 · Khách hàng" width={1280} height={800}>
+              <DesktopFrame url="admin.autowash.vn/customers"><AdminCustomers/></DesktopFrame>
+            </DCArtboard>
+          </DCSection>
+
+        </DesignCanvas>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>

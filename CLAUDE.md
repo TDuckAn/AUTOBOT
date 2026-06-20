@@ -5,7 +5,7 @@
 ---
 
 ## Project in One Line
-Web-based motorbike wash management system for Vietnam SMBs — loyalty tiers, advance booking with capacity limits, walk-in support. Backend: ASP.NET Core 9 monolith. DB: SQL Server. See PLAN.md for full build plan.
+Full-stack motorbike wash management system for Vietnam SMBs — loyalty tiers, advance booking with capacity limits, walk-in support. Backend: ASP.NET Core 9 (API/BLL/DAL). Frontend: React 18 + Vite 5 (Staff & Admin). DB: SQL Server. See PLAN.md for full build plan.
 
 ## Source of Truth Hierarchy
 1. **SYSTEM_SPEC.md** — authoritative for implementation (overrides SRS on any conflict)
@@ -29,6 +29,8 @@ Web-based motorbike wash management system for Vietnam SMBs — loyalty tiers, a
 | D8 | Near-expiry notification: scan `POINTS_LEDGER` for entries expiring within 30 days | Monthly job + separate near-expiry scan pass |
 | D9 | `Cors:AllowedOrigins` read from appsettings | Not hardcoded to localhost:5173 |
 | D10 | All list endpoints paginated with `?page=1&pageSize=20` | Prevents unbounded queries |
+| D11 | `Vehicle` & `ServicePricing` reference `VehicleType` via `VehicleTypeId` FK (was free-text string) | Relational integrity; the VehicleType table was orphaned. Migrated in place (backfill by name match) |
+| D12 | `ServicePricing (ServiceId, VehicleTypeId)` index is **non-unique** | Legacy data already contains duplicate pairs (bookings reference them, can't delete). App-layer check still blocks new duplicates |
 
 ---
 
@@ -100,14 +102,19 @@ WHERE status NOT IN ('Cancelled')
 ## Phase Status (copy from PLAN.md §5 — keep in sync)
 | Phase | Status |
 |-------|--------|
-| 0 — Foundation | ⬜ |
-| 1 — Auth | ⬜ |
-| 2 — Service Catalogue | ⬜ |
-| 3 — Booking Engine | ⬜ |
-| 4 — Checkout & Loyalty | ⬜ |
-| 5 — Admin Config & Reports | ⬜ |
-| 6 — Background Jobs | ⬜ |
-| 7 — Quality & Polish | ⬜ |
+| 0 — Foundation | ✅ Completed |
+| 1 — Auth | ✅ Completed |
+| 2 — Service Catalogue | ✅ Completed |
+| 3 — Booking Engine | ✅ Completed |
+| 4 — Checkout & Loyalty | ✅ Completed |
+| 5 — Admin Config & Reports | ✅ Completed |
+| 6 — Background Jobs | ✅ Completed |
+| 7 — Quality & Polish | ✅ Completed |
+| 8 — 3-Layer Refactor | ✅ Completed |
+| 9 — Frontend (Staff & Admin) | ✅ Completed |
+| 10 — VehicleType FK & Performance | ✅ Completed |
+
+> **Note on Phase 10:** Implemented directly by Claude at the user's explicit request — a one-time exception to the "Claude never writes implementation code" rule above. Covers the VehicleType FK fix (D11) plus service/query/caching/frontend performance work.
 
 ---
 
