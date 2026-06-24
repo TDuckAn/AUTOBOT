@@ -138,6 +138,7 @@ export function CustomerBookings() {
   }, [pricingId, date])
 
   const selectedPricing = pricingOptions.find((option) => option.pricing.pricingId === pricingId)
+  const selectedServiceHighlights = extractServiceHighlightsForDisplay(selectedPricing?.service?.description)
 
   const handleDateChange = (value) => {
     if (!value) {
@@ -162,9 +163,18 @@ export function CustomerBookings() {
 
   const submitNew = async (event) => {
     event.preventDefault()
-    if (!vehicleId) { setError('Vui lòng thêm xe trước khi đặt lịch.'); return }
-    if (!pricingId) { setError('Không có gói dịch vụ phù hợp cho loại xe đã chọn.'); return }
-    if (!scheduledAt) { setError('Vui lòng chọn giờ hẹn.'); return }
+    if (!vehicleId) {
+      setError('Vui lòng thêm xe trước khi đặt lịch.')
+      return
+    }
+    if (!pricingId) {
+      setError('Không có gói dịch vụ phù hợp cho loại xe đã chọn.')
+      return
+    }
+    if (!scheduledAt) {
+      setError('Vui lòng chọn giờ hẹn.')
+      return
+    }
 
     setError('')
     setMessage('')
@@ -187,7 +197,7 @@ export function CustomerBookings() {
     try {
       await cancelBooking(id)
       setMessage('Đã huỷ lịch.')
-      setBookings((prev) => prev.map((booking) => booking.bookingId === id ? { ...booking, status: 'Cancelled' } : booking))
+      setBookings((prev) => prev.map((booking) => (booking.bookingId === id ? { ...booking, status: 'Cancelled' } : booking)))
     } catch (err) {
       setError(getApiError(err, 'Không thể huỷ lịch.'))
     }
@@ -195,7 +205,8 @@ export function CustomerBookings() {
 
   return (
     <CustomerShell
-      active="bookings" title={view === 'new' ? 'Đặt lịch mới' : 'Lịch đặt'}
+      active="bookings"
+      title={view === 'new' ? 'Đặt lịch mới' : 'Lịch đặt'}
       headerActions={
         view === 'list'
           ? <button className="aw-btn aw-btn-primary aw-btn-sm" onClick={() => { setView('new'); setError(''); setMessage('') }}><Icons.Plus size={13} sw={2.5} /> Đặt lịch mới</button>
@@ -281,18 +292,77 @@ export function CustomerBookings() {
                 Chưa có gói dịch vụ nào dành cho loại xe <strong>{selectedVehicle.vehicleTypeName}</strong>.
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px,1fr))', gap: 10, marginBottom: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px,1fr))', gap: 12, marginBottom: 20 }}>
                 {pricingOptions.map(({ service, pricing }) => {
                   const checked = pricingId === pricing.pricingId
+                  const serviceHighlights = extractServiceHighlightsForDisplay(service.description)
                   return (
-                    <label key={pricing.pricingId} className="aw-card" style={{ padding: '12px 14px', cursor: 'pointer', borderColor: checked ? 'var(--primary)' : 'var(--border)', background: checked ? 'var(--primary-soft)' : 'var(--surface)' }}>
+                    <label
+                      key={pricing.pricingId}
+                      className="aw-card"
+                      style={{
+                        padding: '14px 15px',
+                        cursor: 'pointer',
+                        borderColor: checked ? 'var(--primary)' : 'var(--border)',
+                        background: checked ? 'var(--primary-soft)' : 'var(--surface)',
+                        boxShadow: checked ? '0 0 0 3px var(--primary-ring)' : 'none',
+                      }}
+                    >
                       <input type="radio" name="pricing" checked={checked} onChange={() => setPricingId(pricing.pricingId)} style={{ position: 'absolute', opacity: 0 }} />
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 700 }}>{service.name}</div>
-                          <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 2 }}>{pricing.vehicleTypeName} · {pricing.durationMinutes} phút</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.35 }}>{service.name}</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                              <MetaChip icon={<Icons.Bike size={11} />} label={pricing.vehicleTypeName} />
+                              <MetaChip icon={<Icons.Clock size={11} />} label={`${pricing.durationMinutes} phút`} />
+                            </div>
+                          </div>
+                          <div style={{ flexShrink: 0, textAlign: 'right' }}>
+                            <div style={{ fontSize: 11, color: 'var(--ink-500)', marginBottom: 3 }}>{checked ? 'Đang chọn' : 'Giá gói'}</div>
+                            <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--primary-ink)', fontFamily: "'Geist Mono',monospace" }}>{formatVND(pricing.price)}</div>
+                          </div>
                         </div>
-                        <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary-ink)', fontFamily: "'Geist Mono',monospace" }}>{formatVND(pricing.price)}</div>
+
+                        {service.description && (
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: 'var(--ink-700)',
+                              lineHeight: 1.55,
+                              background: checked ? 'rgba(255,255,255,0.82)' : 'var(--surface-2)',
+                              border: '1px solid var(--border)',
+                              borderRadius: 8,
+                              padding: '9px 10px',
+                              display: '-webkit-box',
+                              WebkitLineClamp: 3,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
+                            }}
+                          >
+                            {service.description}
+                          </div>
+                        )}
+
+                        {serviceHighlights.length > 0 && (
+                          <div style={{ display: 'grid', gap: 6 }}>
+                            {serviceHighlights.slice(0, 3).map((item) => (
+                              <div
+                                key={`${pricing.pricingId}-${item}`}
+                                style={{
+                                  display: 'flex',
+                                  gap: 8,
+                                  alignItems: 'flex-start',
+                                  fontSize: 11,
+                                  color: 'var(--ink-700)',
+                                }}
+                              >
+                                <span style={{ color: 'var(--green)', lineHeight: 1.4 }}><Icons.Check size={11} sw={2.6} /></span>
+                                <span style={{ lineHeight: 1.45 }}>{item}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </label>
                   )
@@ -304,9 +374,14 @@ export function CustomerBookings() {
             <div className="aw-card" style={{ padding: '14px 16px', marginBottom: 20 }}>
               <Field label="Ngày hẹn">
                 <input
-                  className="aw-input" type="date" value={date}
-                  min={TODAY} max={maxBookingDate} onChange={(event) => handleDateChange(event.target.value)}
-                  style={{ maxWidth: 200, height: 38 }} required
+                  className="aw-input"
+                  type="date"
+                  value={date}
+                  min={TODAY}
+                  max={maxBookingDate}
+                  onChange={(event) => handleDateChange(event.target.value)}
+                  style={{ maxWidth: 200, height: 38 }}
+                  required
                 />
               </Field>
               <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 8 }}>
@@ -327,16 +402,19 @@ export function CustomerBookings() {
                       const checked = scheduledAt === slot.scheduledAt
                       return (
                         <button
-                          key={slot.scheduledAt} type="button"
+                          key={slot.scheduledAt}
+                          type="button"
                           disabled={isUnavailable}
                           onClick={() => setScheduledAt(slot.scheduledAt)}
                           style={{
-                            padding: '6px 14px', borderRadius: 6,
+                            padding: '6px 14px',
+                            borderRadius: 6,
                             border: `1px solid ${checked ? 'var(--primary)' : 'var(--border)'}`,
                             background: checked ? 'var(--primary-soft)' : isUnavailable ? 'var(--surface-2)' : 'var(--surface)',
                             color: checked ? 'var(--primary-ink)' : isUnavailable ? 'var(--ink-300)' : 'var(--ink-700)',
                             opacity: isUnavailable ? 0.55 : 1,
-                            fontSize: 12, fontWeight: checked ? 700 : 500,
+                            fontSize: 12,
+                            fontWeight: checked ? 700 : 500,
                             cursor: isUnavailable ? 'not-allowed' : 'pointer',
                             fontFamily: "'Geist Mono',monospace",
                           }}
@@ -363,21 +441,58 @@ export function CustomerBookings() {
             </div>
             <div className="aw-scroll" style={{ flex: 1, padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               {selectedPricing ? (
-                <div style={{ borderRadius: 6, border: '1px solid var(--border)', overflow: 'hidden', fontSize: 12 }}>
-                  {[
-                    ['Dịch vụ', selectedPricing.service.name],
-                    ['Loại xe', selectedPricing.pricing.vehicleTypeName],
-                    ['Thời gian', `${selectedPricing.pricing.durationMinutes} phút`],
-                    ['Xe', vehicles.find((vehicle) => vehicle.vehicleId === vehicleId)?.licensePlate ?? '-'],
-                    ['Giờ hẹn', scheduledAt ? formatTime(scheduledAt) : '-'],
-                    ['Ngày', date ? new Date(date).toLocaleDateString('vi-VN') : '-'],
-                  ].map(([label, value], index, arr) => (
-                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', borderBottom: index < arr.length - 1 ? '1px solid var(--surface-3)' : 'none' }}>
-                      <span style={{ color: 'var(--ink-500)' }}>{label}</span>
-                      <span style={{ fontWeight: 600 }}>{value}</span>
+                <>
+                  <div className="aw-card" style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: 12, background: 'linear-gradient(180deg, var(--primary-soft) 0%, var(--surface) 100%)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-500)', marginBottom: 5 }}>Dịch vụ đã chọn</div>
+                        <div style={{ fontSize: 15, fontWeight: 800, lineHeight: 1.35 }}>{selectedPricing.service.name}</div>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontSize: 11, color: 'var(--ink-500)', marginBottom: 3 }}>Tạm tính</div>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--primary-ink)', fontFamily: "'Geist Mono',monospace" }}>
+                          {formatVND(selectedPricing.pricing.price)}
+                        </div>
+                      </div>
                     </div>
-                  ))}
-                </div>
+
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      <MetaChip icon={<Icons.Bike size={11} />} label={selectedPricing.pricing.vehicleTypeName} />
+                      <MetaChip icon={<Icons.Clock size={11} />} label={`${selectedPricing.pricing.durationMinutes} phút`} />
+                      <MetaChip icon={<Icons.Calendar size={11} />} label={date ? new Date(date).toLocaleDateString('vi-VN') : '-'} />
+                    </div>
+
+                    {selectedPricing.service.description && (
+                      <div style={{ fontSize: 12, lineHeight: 1.6, color: 'var(--ink-700)', background: 'rgba(255,255,255,0.82)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 11px' }}>
+                        {selectedPricing.service.description}
+                      </div>
+                    )}
+
+                    {selectedServiceHighlights.length > 0 && (
+                      <div style={{ display: 'grid', gap: 7 }}>
+                        {selectedServiceHighlights.slice(0, 4).map((item) => (
+                          <div key={item} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: 'var(--ink-700)' }}>
+                            <span style={{ color: 'var(--green)', lineHeight: 1.4 }}><Icons.Check size={12} sw={2.6} /></span>
+                            <span style={{ lineHeight: 1.5 }}>{item}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ borderRadius: 6, border: '1px solid var(--border)', overflow: 'hidden', fontSize: 12 }}>
+                    {[
+                      ['Xe', vehicles.find((vehicle) => vehicle.vehicleId === vehicleId)?.licensePlate ?? '-'],
+                      ['Giờ hẹn', scheduledAt ? formatTime(scheduledAt) : '-'],
+                      ['Ngày', date ? new Date(date).toLocaleDateString('vi-VN') : '-'],
+                    ].map(([label, value], index, arr) => (
+                      <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', borderBottom: index < arr.length - 1 ? '1px solid var(--surface-3)' : 'none' }}>
+                        <span style={{ color: 'var(--ink-500)' }}>{label}</span>
+                        <span style={{ fontWeight: 600 }}>{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
               ) : (
                 <div style={{ color: 'var(--ink-400)', fontSize: 13, textAlign: 'center', padding: '16px 0' }}>Chưa chọn dịch vụ</div>
               )}
@@ -412,4 +527,63 @@ function SectionHeader({ n, title, sub }) {
       {sub && <span style={{ fontSize: 11, color: 'var(--ink-500)' }}>{sub}</span>}
     </div>
   )
+}
+
+function MetaChip({ icon, label }) {
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 5,
+        padding: '4px 9px',
+        borderRadius: 999,
+        background: 'rgba(255,255,255,0.86)',
+        border: '1px solid var(--border)',
+        color: 'var(--ink-700)',
+        fontSize: 11,
+        fontWeight: 600,
+        lineHeight: 1,
+      }}
+    >
+      <span style={{ color: 'var(--primary-ink)', display: 'inline-flex', alignItems: 'center' }}>{icon}</span>
+      <span>{label}</span>
+    </span>
+  )
+}
+
+function extractServiceHighlights(description) {
+  if (!description) {
+    return []
+  }
+
+  const blocks = description
+    .split(/\r?\n|[;•]+/g)
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+  if (blocks.length > 1) {
+    return blocks.slice(0, 4)
+  }
+
+  return description
+    .split(/,\s+/g)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 4)
+    .slice(0, 4)
+}
+
+function extractServiceHighlightsForDisplay(description) {
+  const highlights = extractServiceHighlights(description)
+
+  if (!description) {
+    return highlights
+  }
+
+  const normalizedDescription = description.trim()
+  if (highlights.length === 1 && highlights[0] === normalizedDescription) {
+    return []
+  }
+
+  return highlights
 }
