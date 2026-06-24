@@ -1,23 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
-import { cancelBooking, createBooking, getAvailability, getMyBookings, getVehicles } from '../../api/customer.js'
+import { cancelBooking, createBooking, getAvailability, getLoyalty, getMyBookings, getVehicles } from '../../api/customer.js'
 import { getApiError, unwrapPaged } from '../../api/client.js'
 import { listPricing, listServices } from '../../api/services.js'
 import { StatusPill } from '../../components/badges.jsx'
 import { Icons } from '../../components/icons.jsx'
 import { CustomerShell } from '../../components/layout/CustomerShell.jsx'
 import { EmptyState, Field, PageContainer } from '../../components/ui.jsx'
-import { formatDate, formatTime, formatVND } from '../../utils/format.js'
+import { addLocalDaysIso, formatDate, formatTime, formatVND, toLocalDateIso } from '../../utils/format.js'
 
-const TODAY = new Date().toISOString().slice(0, 10)
+const TODAY = toLocalDateIso()
 
 export function CustomerBookings() {
-  const [view, setView] = useState('list')  // 'list' | 'new'
+  const [view, setView] = useState('list')
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
-
-  // New booking form state
   const [services, setServices] = useState([])
   const [pricingByService, setPricingByService] = useState({})
   const [pricingId, setPricingId] = useState('')
@@ -26,6 +24,7 @@ export function CustomerBookings() {
   const [scheduledAt, setScheduledAt] = useState('')
   const [vehicleId, setVehicleId] = useState('')
   const [vehicles, setVehicles] = useState([])
+  const [bookingWindowDays, setBookingWindowDays] = useState(0)
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
@@ -42,36 +41,83 @@ export function CustomerBookings() {
   }
 
   useEffect(() => {
-    // Wrap state updates to avoid cascading renders
     Promise.resolve().then(() => {
       loadBookings()
-      // Load services + pricing for new booking form
+
       listServices()
         .then(async (data) => {
-          const rows = unwrapPaged(data).filter((s) => s.isActive)
+          const rows = unwrapPaged(data).filter((service) => service.isActive)
           setServices(rows)
-          const pairs = await Promise.all(rows.map(async (s) => [s.serviceId, unwrapPaged(await listPricing(s.serviceId)).filter((p) => p.isActive)]))
-          const map = Object.fromEntries(pairs)
-          setPricingByService(map)
-          const first = pairs.flatMap(([, ps]) => ps)[0]
-          if (first) setPricingId(first.pricingId)
+          const pairs = await Promise.all(
+            rows.map(async (service) => [
+              service.serviceId,
+              unwrapPaged(await listPricing(service.serviceId)).filter((pricing) => pricing.isActive),
+            ]),
+          )
+          setPricingByService(Object.fromEntries(pairs))
         })
         .catch(() => {})
-      // Load customer's vehicles
+
       getVehicles()
-        .then((d) => {
-          const vs = unwrapPaged(d)
-          setVehicles(vs)
-          if (vs[0]) setVehicleId(vs[0].vehicleId)
+        .then((data) => {
+          const rows = unwrapPaged(data)
+          setVehicles(rows)
+          if (rows[0]) {
+            setVehicleId(rows[0].vehicleId)
+          }
         })
+        .catch(() => {})
+
+      getLoyalty()
+        .then((data) => setBookingWindowDays(Math.max(0, Number(data?.bookingWindowDays ?? 0))))
         .catch(() => {})
     })
   }, [])
 
-  // Load availability slots when pricingId or date changes
+  const selectedVehicle = useMemo(
+    () => vehicles.find((vehicle) => vehicle.vehicleId === vehicleId) ?? null,
+    [vehicleId, vehicles],
+  )
+
+  const maxBookingDate = useMemo(
+    () => addLocalDaysIso(TODAY, bookingWindowDays),
+    [bookingWindowDays],
+  )
+
+  const pricingOptions = useMemo(() => {
+    if (!selectedVehicle) {
+      return []
+    }
+
+    return services.flatMap((service) =>
+      (pricingByService[service.serviceId] ?? [])
+        .filter((pricing) => pricing.vehicleTypeId === selectedVehicle.vehicleTypeId)
+        .map((pricing) => ({ service, pricing })),
+    )
+  }, [pricingByService, selectedVehicle, services])
+
+  useEffect(() => {
+    if (date > maxBookingDate) {
+      setDate(maxBookingDate)
+    }
+  }, [date, maxBookingDate])
+
+  useEffect(() => {
+    if (pricingOptions.length === 0) {
+      setPricingId('')
+      setSlots([])
+      setScheduledAt('')
+      return
+    }
+
+    if (!pricingOptions.some((option) => option.pricing.pricingId === pricingId)) {
+      setPricingId(pricingOptions[0].pricing.pricingId)
+    }
+  }, [pricingId, pricingOptions])
+
   useEffect(() => {
     if (!pricingId || !date) return
-    // Avoid synchronous setState inside effect to prevent cascading renders
+
     Promise.resolve().then(() => {
       setSlotsLoading(true)
       setSlots([])
@@ -82,28 +128,49 @@ export function CustomerBookings() {
       .then((data) => {
         const allSlots = Array.isArray(data) ? data : data?.slots ?? []
         setSlots(allSlots)
-        const firstSelectable = allSlots.find((s) => s.isAvailable && new Date(s.scheduledAt) >= new Date())
-        if (firstSelectable) setScheduledAt(firstSelectable.scheduledAt)
+        const firstSelectable = allSlots.find((slot) => slot.isAvailable && new Date(slot.scheduledAt) >= new Date())
+        if (firstSelectable) {
+          setScheduledAt(firstSelectable.scheduledAt)
+        }
       })
       .catch(() => setSlots([]))
       .finally(() => setSlotsLoading(false))
   }, [pricingId, date])
 
-  const pricingOptions = useMemo(
-    () => services.flatMap((s) => (pricingByService[s.serviceId] ?? []).map((p) => ({ service: s, pricing: p }))),
-    [services, pricingByService],
-  )
-  const selectedPricing = pricingOptions.find((o) => o.pricing.pricingId === pricingId)
+  const selectedPricing = pricingOptions.find((option) => option.pricing.pricingId === pricingId)
 
-  const submitNew = async (e) => {
-    e.preventDefault()
+  const handleDateChange = (value) => {
+    if (!value) {
+      setDate(TODAY)
+      return
+    }
+
+    if (value < TODAY) {
+      setDate(TODAY)
+      return
+    }
+
+    if (value > maxBookingDate) {
+      setDate(maxBookingDate)
+      setError(`Bạn chỉ có thể đặt lịch đến ngày ${new Date(maxBookingDate).toLocaleDateString('vi-VN')}.`)
+      return
+    }
+
+    setError('')
+    setDate(value)
+  }
+
+  const submitNew = async (event) => {
+    event.preventDefault()
     if (!vehicleId) { setError('Vui lòng thêm xe trước khi đặt lịch.'); return }
+    if (!pricingId) { setError('Không có gói dịch vụ phù hợp cho loại xe đã chọn.'); return }
     if (!scheduledAt) { setError('Vui lòng chọn giờ hẹn.'); return }
+
     setError('')
     setMessage('')
     setSubmitting(true)
     try {
-      await createBooking({ vehicleId, pricingId, scheduledAt: new Date(scheduledAt).toISOString() })
+      await createBooking({ vehicleId, pricingId, scheduledAt })
       setMessage('Đặt lịch thành công!')
       setView('list')
       await loadBookings()
@@ -120,7 +187,7 @@ export function CustomerBookings() {
     try {
       await cancelBooking(id)
       setMessage('Đã huỷ lịch.')
-      setBookings((prev) => prev.map((b) => b.bookingId === id ? { ...b, status: 'Cancelled' } : b))
+      setBookings((prev) => prev.map((booking) => booking.bookingId === id ? { ...booking, status: 'Cancelled' } : booking))
     } catch (err) {
       setError(getApiError(err, 'Không thể huỷ lịch.'))
     }
@@ -143,32 +210,32 @@ export function CustomerBookings() {
             </div>
           )}
           {loading ? (
-            <EmptyState title="Đang tải lịch đặt…" />
+            <EmptyState title="Đang tải lịch đặt..." />
           ) : bookings.length === 0 ? (
             <EmptyState title="Chưa có lịch đặt nào">
               <button className="aw-btn aw-btn-primary aw-btn-sm" style={{ marginTop: 10 }} onClick={() => setView('new')}>Đặt lịch ngay</button>
             </EmptyState>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {bookings.map((b) => (
-                <div key={b.bookingId} className="aw-card" style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 16 }}>
+              {bookings.map((booking) => (
+                <div key={booking.bookingId} className="aw-card" style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 16 }}>
                   <div style={{ flexShrink: 0, textAlign: 'center', minWidth: 64 }}>
-                    <div style={{ fontSize: 15, fontWeight: 800, fontFamily: "'Geist Mono',monospace" }}>{formatTime(b.scheduledAt)}</div>
-                    <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 1 }}>{formatDate(b.scheduledAt)}</div>
+                    <div style={{ fontSize: 15, fontWeight: 800, fontFamily: "'Geist Mono',monospace" }}>{formatTime(booking.scheduledAt)}</div>
+                    <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 1 }}>{formatDate(booking.scheduledAt)}</div>
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700 }}>{b.serviceName}</div>
-                    <div style={{ fontSize: 12, color: 'var(--ink-500)', fontFamily: "'Geist Mono',monospace", marginTop: 2 }}>{b.vehicleTypeName}</div>
-                    {b.pointsEarned > 0 && <div style={{ fontSize: 11, color: 'var(--green-ink)', marginTop: 2 }}>+{b.pointsEarned} điểm</div>}
+                    <div style={{ fontSize: 14, fontWeight: 700 }}>{booking.serviceName}</div>
+                    <div style={{ fontSize: 12, color: 'var(--ink-500)', fontFamily: "'Geist Mono',monospace", marginTop: 2 }}>{booking.vehicleTypeName}</div>
+                    {booking.pointsEarned > 0 && <div style={{ fontSize: 11, color: 'var(--green-ink)', marginTop: 2 }}>+{booking.pointsEarned} điểm</div>}
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-                    <div style={{ fontSize: 15, fontWeight: 800, fontFamily: "'Geist Mono',monospace" }}>{formatVND(b.finalPrice)}</div>
-                    <StatusPill status={b.status?.toLowerCase()} />
-                    {b.status === 'Confirmed' && (
+                    <div style={{ fontSize: 15, fontWeight: 800, fontFamily: "'Geist Mono',monospace" }}>{formatVND(booking.finalPrice)}</div>
+                    <StatusPill status={booking.status?.toLowerCase()} />
+                    {booking.status === 'Confirmed' && (
                       <button
                         className="aw-btn aw-btn-ghost aw-btn-sm"
                         style={{ fontSize: 11, color: 'var(--danger)' }}
-                        onClick={() => doCancel(b.bookingId)}
+                        onClick={() => doCancel(booking.bookingId)}
                       >
                         <Icons.Trash size={11} /> Huỷ
                       </button>
@@ -191,52 +258,61 @@ export function CustomerBookings() {
             <SectionHeader n="1" title="Xe của bạn" sub="Chọn xe để đặt lịch" />
             {vehicles.length === 0 ? (
               <div className="aw-card" style={{ padding: 16, marginBottom: 20, color: 'var(--ink-500)', fontSize: 13 }}>
-                Bạn chưa có xe nào. <a href="/customer/vehicles" style={{ color: 'var(--primary-ink)' }}>Thêm xe →</a>
+                Bạn chưa có xe nào. <a href="/customer/vehicles" style={{ color: 'var(--primary-ink)' }}>Thêm xe -&gt;</a>
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px,1fr))', gap: 10, marginBottom: 20 }}>
-                {vehicles.map((v) => {
-                  const checked = vehicleId === v.vehicleId
+                {vehicles.map((vehicle) => {
+                  const checked = vehicleId === vehicle.vehicleId
                   return (
-                    <label key={v.vehicleId} className="aw-card" style={{ padding: '12px 14px', cursor: 'pointer', borderColor: checked ? 'var(--primary)' : 'var(--border)', background: checked ? 'var(--primary-soft)' : 'var(--surface)' }}>
-                      <input type="radio" name="vehicle" checked={checked} onChange={() => setVehicleId(v.vehicleId)} style={{ position: 'absolute', opacity: 0 }} />
-                      <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Geist Mono',monospace" }}>{v.licensePlate}</div>
-                      <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 3 }}>{v.vehicleTypeName}{v.brand ? ` · ${v.brand}` : ''}</div>
+                    <label key={vehicle.vehicleId} className="aw-card" style={{ padding: '12px 14px', cursor: 'pointer', borderColor: checked ? 'var(--primary)' : 'var(--border)', background: checked ? 'var(--primary-soft)' : 'var(--surface)' }}>
+                      <input type="radio" name="vehicle" checked={checked} onChange={() => setVehicleId(vehicle.vehicleId)} style={{ position: 'absolute', opacity: 0 }} />
+                      <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Geist Mono',monospace" }}>{vehicle.licensePlate}</div>
+                      <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 3 }}>{vehicle.vehicleTypeName}{vehicle.brand ? ` · ${vehicle.brand}` : ''}</div>
                     </label>
                   )
                 })}
               </div>
             )}
 
-            <SectionHeader n="2" title="Dịch vụ" sub="Chọn gói rửa xe" />
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px,1fr))', gap: 10, marginBottom: 20 }}>
-              {pricingOptions.map(({ service, pricing }) => {
-                const checked = pricingId === pricing.pricingId
-                return (
-                  <label key={pricing.pricingId} className="aw-card" style={{ padding: '12px 14px', cursor: 'pointer', borderColor: checked ? 'var(--primary)' : 'var(--border)', background: checked ? 'var(--primary-soft)' : 'var(--surface)' }}>
-                    <input type="radio" name="pricing" checked={checked} onChange={() => setPricingId(pricing.pricingId)} style={{ position: 'absolute', opacity: 0 }} />
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 700 }}>{service.name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 2 }}>{pricing.vehicleTypeName} · {pricing.durationMinutes} phút</div>
+            <SectionHeader n="2" title="Dịch vụ" sub={selectedVehicle ? `Gói cho ${selectedVehicle.vehicleTypeName}` : 'Chọn xe trước khi chọn gói'} />
+            {selectedVehicle && pricingOptions.length === 0 ? (
+              <div className="aw-card" style={{ padding: 16, marginBottom: 20, color: 'var(--ink-500)', fontSize: 13 }}>
+                Chưa có gói dịch vụ nào dành cho loại xe <strong>{selectedVehicle.vehicleTypeName}</strong>.
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px,1fr))', gap: 10, marginBottom: 20 }}>
+                {pricingOptions.map(({ service, pricing }) => {
+                  const checked = pricingId === pricing.pricingId
+                  return (
+                    <label key={pricing.pricingId} className="aw-card" style={{ padding: '12px 14px', cursor: 'pointer', borderColor: checked ? 'var(--primary)' : 'var(--border)', background: checked ? 'var(--primary-soft)' : 'var(--surface)' }}>
+                      <input type="radio" name="pricing" checked={checked} onChange={() => setPricingId(pricing.pricingId)} style={{ position: 'absolute', opacity: 0 }} />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700 }}>{service.name}</div>
+                          <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 2 }}>{pricing.vehicleTypeName} · {pricing.durationMinutes} phút</div>
+                        </div>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary-ink)', fontFamily: "'Geist Mono',monospace" }}>{formatVND(pricing.price)}</div>
                       </div>
-                      <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--primary-ink)', fontFamily: "'Geist Mono',monospace" }}>{formatVND(pricing.price)}</div>
-                    </div>
-                  </label>
-                )
-              })}
-            </div>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
 
-            <SectionHeader n="3" title="Ngày & giờ" sub="Chọn ngày và giờ còn trống" />
+            <SectionHeader n="3" title="Ngày và giờ" sub="Chọn ngày và giờ còn trống" />
             <div className="aw-card" style={{ padding: '14px 16px', marginBottom: 20 }}>
               <Field label="Ngày hẹn">
                 <input
                   className="aw-input" type="date" value={date}
-                  min={TODAY} onChange={(e) => setDate(e.target.value)}
+                  min={TODAY} max={maxBookingDate} onChange={(event) => handleDateChange(event.target.value)}
                   style={{ maxWidth: 200, height: 38 }} required
                 />
               </Field>
-              {slotsLoading && <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 10 }}>Đang kiểm tra slot…</div>}
+              <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 8 }}>
+                Bạn có thể đặt trước tối đa {bookingWindowDays} ngày theo hạng thành viên hiện tại.
+              </div>
+              {slotsLoading && <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 10 }}>Đang kiểm tra slot...</div>}
               {!slotsLoading && slots.length === 0 && pricingId && (
                 <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 10 }}>Không còn slot trống trong ngày này.</div>
               )}
@@ -275,10 +351,12 @@ export function CustomerBookings() {
                   </div>
                 </div>
               )}
+              <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 12 }}>
+                Giờ nhận lịch cho khách hàng: 08:00 - 17:00.
+              </div>
             </div>
           </div>
 
-          {/* Bill sidebar */}
           <aside style={{ width: 'clamp(320px, 24vw, 440px)', flexShrink: 0, background: 'var(--surface)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
               <div style={{ fontSize: 13, fontWeight: 700 }}>Hoá đơn xác nhận</div>
@@ -290,11 +368,11 @@ export function CustomerBookings() {
                     ['Dịch vụ', selectedPricing.service.name],
                     ['Loại xe', selectedPricing.pricing.vehicleTypeName],
                     ['Thời gian', `${selectedPricing.pricing.durationMinutes} phút`],
-                    ['Xe', vehicles.find((v) => v.vehicleId === vehicleId)?.licensePlate ?? '—'],
-                    ['Giờ hẹn', scheduledAt ? formatTime(scheduledAt) : '—'],
-                    ['Ngày', date ? new Date(date).toLocaleDateString('vi-VN') : '—'],
-                  ].map(([label, value], i, arr) => (
-                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', borderBottom: i < arr.length - 1 ? '1px solid var(--surface-3)' : 'none' }}>
+                    ['Xe', vehicles.find((vehicle) => vehicle.vehicleId === vehicleId)?.licensePlate ?? '-'],
+                    ['Giờ hẹn', scheduledAt ? formatTime(scheduledAt) : '-'],
+                    ['Ngày', date ? new Date(date).toLocaleDateString('vi-VN') : '-'],
+                  ].map(([label, value], index, arr) => (
+                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', borderBottom: index < arr.length - 1 ? '1px solid var(--surface-3)' : 'none' }}>
                       <span style={{ color: 'var(--ink-500)' }}>{label}</span>
                       <span style={{ fontWeight: 600 }}>{value}</span>
                     </div>
@@ -316,7 +394,7 @@ export function CustomerBookings() {
                 disabled={submitting || !pricingId || !scheduledAt || !vehicleId}
                 style={{ width: '100%', height: 40, fontSize: 13, fontWeight: 600 }}
               >
-                <Icons.Check size={14} sw={2.5} /> {submitting ? 'Đang đặt…' : 'Xác nhận đặt lịch'}
+                <Icons.Check size={14} sw={2.5} /> {submitting ? 'Đang đặt...' : 'Xác nhận đặt lịch'}
               </button>
             </div>
           </aside>

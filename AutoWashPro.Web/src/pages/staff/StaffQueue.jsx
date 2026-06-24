@@ -6,9 +6,9 @@ import { Icons } from '../../components/icons.jsx'
 import { StaffShell } from '../../components/layout/StaffShell.jsx'
 import { EmptyState } from '../../components/ui.jsx'
 import { StatusPill } from '../../components/badges.jsx'
-import { formatTime, formatVND, formatVNDShort } from '../../utils/format.js'
+import { formatTime, formatVND, formatVNDShort, toLocalDateIso } from '../../utils/format.js'
 
-const TODAY = new Date().toISOString().slice(0, 10)
+const TODAY = toLocalDateIso()
 
 export function StaffQueue() {
   const navigate = useNavigate()

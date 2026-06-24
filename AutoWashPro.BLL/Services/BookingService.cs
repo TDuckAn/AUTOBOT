@@ -16,20 +16,24 @@ public class BookingService(
     ILogger<BookingService> logger) : IBookingService
 {
     private const int MaxPageSize = 100;
+    private static readonly TimeOnly BusinessStartTime = new(8, 0);
+    private static readonly TimeOnly BusinessLastCustomerSlot = new(17, 0);
+    private static readonly TimeOnly BusinessEndTime = new(17, 30);
     private readonly AppDbContext _db = db;
     private readonly IConfiguration _configuration = configuration;
     private readonly ILogger<BookingService> _logger = logger;
     private readonly int _slotDurationMinutes = configuration.GetValue("BookingSettings:SlotDurationMinutes", 30);
     private readonly int _maxCapacityPerSlot = configuration.GetValue("BookingSettings:MaxCapacityPerSlot", 4);
 
-    public async Task<Result<bool>> CheckSlotAvailabilityAsync(DateTime scheduledAt, Guid pricingId)
+    public async Task<Result<bool>> CheckSlotAvailabilityAsync(Guid customerId, DateTime scheduledAt, Guid pricingId)
     {
-        var pricing = await GetActivePricingAsync(pricingId);
-        if (pricing is null)
+        var validation = await ValidateCustomerScheduleAsync(customerId, pricingId, scheduledAt);
+        if (!validation.IsSuccess)
         {
-            return Result<bool>.Fail("Active pricing was not found.");
+            return Result<bool>.Fail(validation.Error!);
         }
 
+        var pricing = validation.Value!.Pricing;
         var slotStart = scheduledAt.RoundDownToSlot(_slotDurationMinutes);
         var slotEnd = slotStart.AddMinutes(pricing.DurationMinutes);
 
@@ -40,8 +44,14 @@ public class BookingService(
         return Result<bool>.Ok(isAvailable);
     }
 
-    public async Task<Result<IReadOnlyList<AvailabilitySlotDto>>> GetAvailabilityAsync(DateTime date, Guid pricingId)
+    public async Task<Result<IReadOnlyList<AvailabilitySlotDto>>> GetAvailabilityAsync(Guid customerId, DateTime date, Guid pricingId)
     {
+        var customerValidation = await ValidateCustomerBookingDateAsync(customerId, date);
+        if (!customerValidation.IsSuccess)
+        {
+            return Result<IReadOnlyList<AvailabilitySlotDto>>.Fail(customerValidation.Error!);
+        }
+
         var pricing = await GetActivePricingAsync(pricingId);
         if (pricing is null)
         {
@@ -69,6 +79,11 @@ public class BookingService(
         for (var slotStart = dayStart; slotStart < dayEnd; slotStart = slotStart.AddMinutes(_slotDurationMinutes))
         {
             var slotEnd = slotStart.AddMinutes(pricing.DurationMinutes);
+            if (!IsCustomerBookableRange(slotStart, slotEnd))
+            {
+                continue;
+            }
+
             var remaining = Math.Max(0, _maxCapacityPerSlot - MaxConcurrency(dayBookings, slotStart, slotEnd));
             var isInFuture = slotStart >= nowSlot;
             slots.Add(new AvailabilitySlotDto
@@ -334,11 +349,17 @@ public class BookingService(
             return Result<(ServicePricing, Customer)>.Fail("Customer was not found.");
         }
 
-        var vehicleBelongsToCustomer = await _db.Vehicles.AnyAsync(vehicle =>
-            vehicle.VehicleId == request.VehicleId && vehicle.CustomerId == customerId);
-        if (!vehicleBelongsToCustomer)
+        var vehicle = await _db.Vehicles
+            .AsNoTracking()
+            .SingleOrDefaultAsync(entity => entity.VehicleId == request.VehicleId && entity.CustomerId == customerId);
+        if (vehicle is null)
         {
             return Result<(ServicePricing, Customer)>.Fail("Vehicle was not found for this customer.");
+        }
+
+        if (vehicle.VehicleTypeId != pricing.VehicleTypeId)
+        {
+            return Result<(ServicePricing, Customer)>.Fail("Selected service package does not match the vehicle type.");
         }
 
         var expectedEndAt = scheduledAt.AddMinutes(pricing.DurationMinutes);
@@ -358,7 +379,12 @@ public class BookingService(
             return Result<(ServicePricing, Customer)>.Fail("Scheduled time must be in the future.");
         }
 
-        if (scheduledAt > DateTime.UtcNow.AddDays(customer.TierConfig.BookingWindowDays))
+        if (!IsCustomerBookableRange(scheduledAt, expectedEndAt))
+        {
+            return Result<(ServicePricing, Customer)>.Fail("Bookings are only available from 08:00 to 17:30 within business hours.");
+        }
+
+        if (DateOnly.FromDateTime(scheduledAt) > GetBookingWindowEndDate(customer.TierConfig.BookingWindowDays))
         {
             return Result<(ServicePricing, Customer)>.Fail("Scheduled time exceeds the customer's booking window.");
         }
@@ -369,6 +395,73 @@ public class BookingService(
         }
 
         return Result<(ServicePricing, Customer)>.Ok((pricing, customer));
+    }
+
+    private async Task<Result<(ServicePricing Pricing, Customer Customer)>> ValidateCustomerScheduleAsync(
+        Guid customerId,
+        Guid pricingId,
+        DateTime scheduledAt)
+    {
+        var pricing = await GetActivePricingAsync(pricingId);
+        if (pricing is null)
+        {
+            return Result<(ServicePricing, Customer)>.Fail("Active pricing was not found.");
+        }
+
+        var customer = await _db.Customers
+            .AsNoTracking()
+            .Include(entity => entity.TierConfig)
+            .SingleOrDefaultAsync(entity => entity.CustomerId == customerId);
+        if (customer is null)
+        {
+            return Result<(ServicePricing, Customer)>.Fail("Customer was not found.");
+        }
+
+        var slotStart = scheduledAt.RoundDownToSlot(_slotDurationMinutes);
+        var nowSlot = DateTime.UtcNow.RoundDownToSlot(_slotDurationMinutes);
+        if (slotStart < nowSlot)
+        {
+            return Result<(ServicePricing, Customer)>.Fail("Scheduled time must be in the future.");
+        }
+
+        var slotEnd = slotStart.AddMinutes(pricing.DurationMinutes);
+        if (!IsCustomerBookableRange(slotStart, slotEnd))
+        {
+            return Result<(ServicePricing, Customer)>.Fail("Bookings are only available from 08:00 to 17:30 within business hours.");
+        }
+
+        if (DateOnly.FromDateTime(slotStart) > GetBookingWindowEndDate(customer.TierConfig.BookingWindowDays))
+        {
+            return Result<(ServicePricing, Customer)>.Fail("Scheduled time exceeds the customer's booking window.");
+        }
+
+        return Result<(ServicePricing, Customer)>.Ok((pricing, customer));
+    }
+
+    private async Task<Result<Customer>> ValidateCustomerBookingDateAsync(Guid customerId, DateTime date)
+    {
+        var customer = await _db.Customers
+            .AsNoTracking()
+            .Include(entity => entity.TierConfig)
+            .SingleOrDefaultAsync(entity => entity.CustomerId == customerId);
+        if (customer is null)
+        {
+            return Result<Customer>.Fail("Customer was not found.");
+        }
+
+        var bookingDate = DateOnly.FromDateTime(date);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        if (bookingDate < today)
+        {
+            return Result<Customer>.Fail("Scheduled time must be in the future.");
+        }
+
+        if (bookingDate > GetBookingWindowEndDate(customer.TierConfig.BookingWindowDays))
+        {
+            return Result<Customer>.Fail("Scheduled time exceeds the customer's booking window.");
+        }
+
+        return Result<Customer>.Ok(customer);
     }
 
     private async Task<ServicePricing?> GetActivePricingAsync(Guid pricingId)
@@ -428,6 +521,20 @@ public class BookingService(
     }
 
     private readonly record struct BookingInterval(DateTime ScheduledAt, DateTime ExpectedEndAt);
+
+    private static bool IsCustomerBookableRange(DateTime scheduledAt, DateTime expectedEndAt)
+    {
+        var startTime = TimeOnly.FromDateTime(scheduledAt);
+        var endTime = TimeOnly.FromDateTime(expectedEndAt);
+        return startTime >= BusinessStartTime
+            && startTime <= BusinessLastCustomerSlot
+            && endTime <= BusinessEndTime;
+    }
+
+    private static DateOnly GetBookingWindowEndDate(int bookingWindowDays)
+    {
+        return DateOnly.FromDateTime(DateTime.UtcNow).AddDays(Math.Max(0, bookingWindowDays));
+    }
 
     private static BookingResponseDto ToBookingResponseDto(Booking booking)
     {

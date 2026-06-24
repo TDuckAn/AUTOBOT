@@ -5,7 +5,7 @@ import { Icons } from '../icons.jsx'
 const NAV = [
   { id: 'queue', icon: 'Calendar', label: 'Hàng chờ', path: '/staff/queue' },
   { id: 'walkin', icon: 'Plus', label: 'Khách vãng lai', path: '/staff/walkin' },
-  { id: 'history', icon: 'Receipt', label: 'Danh sách', path: '/staff/list' },
+  { id: 'history', icon: 'Receipt', label: 'Danh sách', path: '/staff/history' },
 ]
 
 export function StaffShell({ active, children, title, headerRight, queueCount = 0 }) {

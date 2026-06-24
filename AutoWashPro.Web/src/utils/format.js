@@ -7,6 +7,17 @@ export const formatVNDShort = (n = 0) => {
   return String(value)
 }
 
+export const toLocalDateIso = (date = new Date()) => {
+  const offset = date.getTimezoneOffset() * 60000
+  return new Date(date.getTime() - offset).toISOString().slice(0, 10)
+}
+
+export const addLocalDaysIso = (dateIso, days) => {
+  const copy = new Date(`${dateIso}T00:00:00`)
+  copy.setDate(copy.getDate() + days)
+  return toLocalDateIso(copy)
+}
+
 export const toLocalDateTimeValue = (date = new Date()) => {
   const offset = date.getTimezoneOffset() * 60000
   return new Date(date.getTime() - offset).toISOString().slice(0, 16)
