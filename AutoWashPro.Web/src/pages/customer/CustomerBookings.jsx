@@ -163,6 +163,8 @@ export function CustomerBookings() {
 
   const submitNew = async (event) => {
     event.preventDefault()
+    const scheduledDateIso = scheduledAt ? toLocalDateIso(new Date(scheduledAt)) : ''
+
     if (!vehicleId) {
       setError('Vui lòng thêm xe trước khi đặt lịch.')
       return
@@ -173,6 +175,11 @@ export function CustomerBookings() {
     }
     if (!scheduledAt) {
       setError('Vui lòng chọn giờ hẹn.')
+      return
+    }
+    if (scheduledDateIso && scheduledDateIso > maxBookingDate) {
+      setError(`Bạn chỉ có thể đặt lịch đến ngày ${new Date(maxBookingDate).toLocaleDateString('vi-VN')}.`)
+      setScheduledAt('')
       return
     }
 

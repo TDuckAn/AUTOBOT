@@ -19,6 +19,7 @@ public class BookingService(
     private static readonly TimeOnly BusinessStartTime = new(8, 0);
     private static readonly TimeOnly BusinessLastCustomerSlot = new(17, 0);
     private static readonly TimeOnly BusinessEndTime = new(17, 30);
+    private static readonly TimeZoneInfo BusinessTimeZone = ResolveBusinessTimeZone();
     private readonly AppDbContext _db = db;
     private readonly IConfiguration _configuration = configuration;
     private readonly ILogger<BookingService> _logger = logger;
@@ -60,7 +61,7 @@ public class BookingService(
 
         var dayStart = date.Date;
         var dayEnd = dayStart.AddDays(1);
-        var nowSlot = DateTime.UtcNow.RoundDownToSlot(_slotDurationMinutes);
+        var nowSlot = GetBusinessNow().RoundDownToSlot(_slotDurationMinutes);
         var slots = new List<AvailabilitySlotDto>();
 
         // Fetch the whole day's overlapping bookings once, then compute every slot's
@@ -157,7 +158,7 @@ public class BookingService(
             return Result<BookingResponseDto>.Fail("System user was not found.");
         }
 
-        var scheduledAt = DateTime.UtcNow.RoundDownToSlot(_slotDurationMinutes);
+        var scheduledAt = GetBusinessNow().RoundDownToSlot(_slotDurationMinutes);
         var expectedEndAt = scheduledAt.AddMinutes(pricing.DurationMinutes);
 
         var phone = request.WalkinPhone.Trim();
@@ -224,7 +225,7 @@ public class BookingService(
             return Result<bool>.Fail("Only confirmed bookings can be cancelled.");
         }
 
-        if (booking.ScheduledAt <= DateTime.UtcNow)
+        if (booking.ScheduledAt <= GetBusinessNow())
         {
             return Result<bool>.Fail("Past or active bookings cannot be cancelled.");
         }
@@ -373,7 +374,7 @@ public class BookingService(
             return Result<(ServicePricing, Customer)>.Fail("Xe này đã có lịch đặt trùng giờ. Vui lòng chọn giờ khác.");
         }
 
-        var nowSlot = DateTime.UtcNow.RoundDownToSlot(_slotDurationMinutes);
+        var nowSlot = GetBusinessNow().RoundDownToSlot(_slotDurationMinutes);
         if (scheduledAt < nowSlot)
         {
             return Result<(ServicePricing, Customer)>.Fail("Scheduled time must be in the future.");
@@ -418,7 +419,7 @@ public class BookingService(
         }
 
         var slotStart = scheduledAt.RoundDownToSlot(_slotDurationMinutes);
-        var nowSlot = DateTime.UtcNow.RoundDownToSlot(_slotDurationMinutes);
+        var nowSlot = GetBusinessNow().RoundDownToSlot(_slotDurationMinutes);
         if (slotStart < nowSlot)
         {
             return Result<(ServicePricing, Customer)>.Fail("Scheduled time must be in the future.");
@@ -450,7 +451,7 @@ public class BookingService(
         }
 
         var bookingDate = DateOnly.FromDateTime(date);
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = GetBusinessToday();
         if (bookingDate < today)
         {
             return Result<Customer>.Fail("Scheduled time must be in the future.");
@@ -533,7 +534,36 @@ public class BookingService(
 
     private static DateOnly GetBookingWindowEndDate(int bookingWindowDays)
     {
-        return DateOnly.FromDateTime(DateTime.UtcNow).AddDays(Math.Max(0, bookingWindowDays));
+        return GetBusinessToday().AddDays(Math.Max(0, bookingWindowDays));
+    }
+
+    private static DateTime GetBusinessNow()
+    {
+        return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, BusinessTimeZone);
+    }
+
+    private static DateOnly GetBusinessToday()
+    {
+        return DateOnly.FromDateTime(GetBusinessNow());
+    }
+
+    private static TimeZoneInfo ResolveBusinessTimeZone()
+    {
+        foreach (var timeZoneId in new[] { "SE Asia Standard Time", "Asia/Ho_Chi_Minh" })
+        {
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+            }
+            catch (InvalidTimeZoneException)
+            {
+            }
+        }
+
+        return TimeZoneInfo.Local;
     }
 
     private static BookingResponseDto ToBookingResponseDto(Booking booking)
