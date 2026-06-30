@@ -58,8 +58,10 @@ export function StaffShell({ active, children, title, headerRight, queueCount = 
         <div style={{ borderTop: '1px solid var(--sidebar-border)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button className="aw-nav-item" onClick={logout}><Icons.LogOut size={15} />Đăng xuất</button>
           <div style={{ padding: '6px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.04)', border: '1px solid var(--sidebar-border)' }}>
-            <div style={{ fontSize: 10, color: 'var(--sidebar-ink)', marginBottom: 2 }}>Ca hiện tại</div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--sidebar-ink-hi)', fontFamily: "'Geist Mono',monospace" }}>07:00 - 15:00</div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--sidebar-ink-hi)' }}>Nhân viên</div>
+              <div style={{ fontSize: 10, color: 'var(--sidebar-ink)' }}>AutoWash Pro</div>
+            </div>
           </div>
         </div>
       </aside>
