@@ -41,6 +41,7 @@ const router = createBrowserRouter([
   { path: '/staff/queue', element: guarded('Staff', <StaffQueue />) },
   { path: '/staff/walkin', element: guarded('Staff', <StaffWalkin />) },
   { path: '/staff/history', element: guarded('Staff', <StaffHistory />) },
+  { path: '/staff/list', element: <Navigate to="/staff/history" replace /> },
 
   // ── Admin (role = 'Admin') ──────────────────────────────
   { path: '/admin/dashboard', element: guarded('Admin', <AdminDashboard />) },

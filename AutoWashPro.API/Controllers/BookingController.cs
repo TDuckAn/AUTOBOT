@@ -19,7 +19,13 @@ public class BookingController(
     [HttpGet("availability")]
     public async Task<IActionResult> GetAvailability([FromQuery] AvailabilityRequestDto request)
     {
-        var result = await _bookingService.GetAvailabilityAsync(request.Date, request.PricingId);
+        var customerId = GetPrincipalId();
+        if (customerId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _bookingService.GetAvailabilityAsync(customerId.Value, request.Date, request.PricingId);
         return result.IsSuccess ? Ok(result.Value) : BadRequest(result.Error);
     }
 

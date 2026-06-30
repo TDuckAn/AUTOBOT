@@ -5,9 +5,9 @@ import { StatusPill } from '../../components/badges.jsx'
 import { Icons } from '../../components/icons.jsx'
 import { StaffShell } from '../../components/layout/StaffShell.jsx'
 import { EmptyState } from '../../components/ui.jsx'
-import { formatDate, formatTime, formatVND } from '../../utils/format.js'
+import { formatDate, formatTime, formatVND, toLocalDateIso } from '../../utils/format.js'
 
-const TODAY = new Date().toISOString().slice(0, 10)
+const TODAY = toLocalDateIso()
 
 export function StaffHistory() {
   const [bookings, setBookings] = useState([])
