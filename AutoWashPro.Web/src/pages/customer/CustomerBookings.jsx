@@ -27,6 +27,8 @@ export function CustomerBookings() {
   const [bookingWindowDays, setBookingWindowDays] = useState(0)
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [cancelTarget, setCancelTarget] = useState(null)
+  const [cancelSubmitting, setCancelSubmitting] = useState(false)
 
   const loadBookings = async () => {
     setLoading(true)
@@ -163,6 +165,8 @@ export function CustomerBookings() {
 
   const submitNew = async (event) => {
     event.preventDefault()
+    const scheduledDateIso = scheduledAt ? toLocalDateIso(new Date(scheduledAt)) : ''
+
     if (!vehicleId) {
       setError('Vui lòng thêm xe trước khi đặt lịch.')
       return
@@ -173,6 +177,11 @@ export function CustomerBookings() {
     }
     if (!scheduledAt) {
       setError('Vui lòng chọn giờ hẹn.')
+      return
+    }
+    if (scheduledDateIso && scheduledDateIso > maxBookingDate) {
+      setError(`Bạn chỉ có thể đặt lịch đến ngày ${new Date(maxBookingDate).toLocaleDateString('vi-VN')}.`)
+      setScheduledAt('')
       return
     }
 
@@ -194,12 +203,16 @@ export function CustomerBookings() {
   const doCancel = async (id) => {
     setError('')
     setMessage('')
+    setCancelSubmitting(true)
     try {
       await cancelBooking(id)
       setMessage('Đã huỷ lịch.')
       setBookings((prev) => prev.map((booking) => (booking.bookingId === id ? { ...booking, status: 'Cancelled' } : booking)))
+      setCancelTarget(null)
     } catch (err) {
       setError(getApiError(err, 'Không thể huỷ lịch.'))
+    } finally {
+      setCancelSubmitting(false)
     }
   }
 
@@ -246,7 +259,7 @@ export function CustomerBookings() {
                       <button
                         className="aw-btn aw-btn-ghost aw-btn-sm"
                         style={{ fontSize: 11, color: 'var(--danger)' }}
-                        onClick={() => doCancel(booking.bookingId)}
+                        onClick={() => setCancelTarget(booking)}
                       >
                         <Icons.Trash size={11} /> Huỷ
                       </button>
@@ -256,6 +269,12 @@ export function CustomerBookings() {
               ))}
             </div>
           )}
+          <ConfirmCancelDialog
+            booking={cancelTarget}
+            submitting={cancelSubmitting}
+            onClose={() => !cancelSubmitting && setCancelTarget(null)}
+            onConfirm={() => cancelTarget && doCancel(cancelTarget.bookingId)}
+          />
         </PageContainer>
       ) : (
         <form onSubmit={submitNew} style={{ display: 'flex', height: '100%' }}>
@@ -549,6 +568,107 @@ function MetaChip({ icon, label }) {
       <span style={{ color: 'var(--primary-ink)', display: 'inline-flex', alignItems: 'center' }}>{icon}</span>
       <span>{label}</span>
     </span>
+  )
+}
+
+function ConfirmCancelDialog({ booking, submitting, onClose, onConfirm }) {
+  if (!booking) {
+    return null
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(9, 9, 11, 0.42)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+        zIndex: 60,
+      }}
+      onClick={onClose}
+    >
+      <div
+        className="aw-card"
+        style={{
+          width: 'min(460px, 100%)',
+          padding: 18,
+          background: 'var(--surface)',
+          boxShadow: 'var(--shadow-lg)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 14,
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <div
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 999,
+              background: 'var(--danger-soft)',
+              color: 'var(--danger)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <Icons.Trash size={16} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 800 }}>Xác nhận huỷ lịch</div>
+            <div style={{ fontSize: 13, color: 'var(--ink-500)', marginTop: 4, lineHeight: 1.5 }}>
+              Bạn có chắc muốn huỷ lịch này không? Hành động này không thể hoàn tác.
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            border: '1px solid var(--border)',
+            borderRadius: 10,
+            background: 'var(--surface-2)',
+            padding: '12px 13px',
+            display: 'grid',
+            gap: 8,
+          }}
+        >
+          <div style={{ fontSize: 14, fontWeight: 700 }}>{booking.serviceName}</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <MetaChip icon={<Icons.Bike size={11} />} label={booking.vehicleTypeName} />
+            <MetaChip icon={<Icons.Calendar size={11} />} label={formatDate(booking.scheduledAt)} />
+            <MetaChip icon={<Icons.Clock size={11} />} label={formatTime(booking.scheduledAt)} />
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--ink-500)' }}>
+            Chi phí: <span style={{ fontWeight: 700, color: 'var(--ink-900)' }}>{formatVND(booking.finalPrice)}</span>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button
+            type="button"
+            className="aw-btn aw-btn-ghost"
+            onClick={onClose}
+            disabled={submitting}
+          >
+            Đóng
+          </button>
+          <button
+            type="button"
+            className="aw-btn aw-btn-danger"
+            onClick={onConfirm}
+            disabled={submitting}
+          >
+            <Icons.Trash size={13} />
+            {submitting ? 'Đang huỷ...' : 'Xác nhận huỷ'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
