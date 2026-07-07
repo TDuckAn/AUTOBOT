@@ -9,6 +9,7 @@ public class Booking
     public Guid? VehicleId { get; set; }
     public Guid PricingId { get; set; }
     public Guid? PromotionId { get; set; }
+    public Guid? VoucherId { get; set; }
     public Guid? CreatedBy { get; set; }
     public DateTime ScheduledAt { get; set; }
     public DateTime ExpectedEndAt { get; set; }
@@ -27,6 +28,7 @@ public class Booking
     public Vehicle? Vehicle { get; set; }
     public ServicePricing Pricing { get; set; } = null!;
     public Promotion? Promotion { get; set; }
+    public CustomerVoucher? Voucher { get; set; }
     public SystemUser? CreatedByUser { get; set; }
     public ICollection<PointsLedger> LedgerEntries { get; set; } = new List<PointsLedger>();
 }

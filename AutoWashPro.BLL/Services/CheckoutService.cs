@@ -36,6 +36,7 @@ public class CheckoutService(
             .Include(entity => entity.Pricing)
             .ThenInclude(pricing => pricing.Service)
             .Include(entity => entity.Promotion)
+            .Include(entity => entity.Voucher)
             .SingleOrDefaultAsync(entity => entity.BookingId == bookingId);
 
         if (booking is null)
@@ -58,8 +59,38 @@ public class CheckoutService(
             return Result<CheckoutSummaryDto>.Fail("Promotion is not valid for this booking.");
         }
 
+        // BR (db-review 3.4): enforce promotion usage limits for registered customers.
+        if (promotion is not null && booking.CustomerId is Guid promoCustomerId)
+        {
+            var usageError = await ValidatePromotionUsageLimitsAsync(promotion, promoCustomerId, booking.BookingId);
+            if (usageError is not null)
+            {
+                return Result<CheckoutSummaryDto>.Fail(usageError);
+            }
+        }
+
+        // db-review 3.1/3.2: resolve the voucher the customer wants to apply.
+        var voucherId = request.VoucherId ?? booking.VoucherId;
+        CustomerVoucher? voucher = null;
+        if (voucherId.HasValue)
+        {
+            voucher = await GetUsableVoucherAsync(voucherId.Value, booking.CustomerId, booking.BookingId);
+            if (voucher is null)
+            {
+                return Result<CheckoutSummaryDto>.Fail("Voucher is not valid for this booking.");
+            }
+
+            // db-review 3.3: a voucher can only stack with a stackable promotion.
+            if (promotion is not null && !promotion.IsStackable)
+            {
+                return Result<CheckoutSummaryDto>.Fail("Voucher cannot be combined with this promotion.");
+            }
+        }
+
         var basePrice = booking.BasePrice > 0 ? booking.BasePrice : booking.Pricing.Price;
         var promoDiscount = CalculatePromotionDiscount(promotion, basePrice);
+        // db-review 3.3: BasePrice -> Promotion -> Voucher, each capped at the remaining amount.
+        var voucherDiscount = voucher is null ? 0m : Math.Min(voucher.DiscountAmount, Math.Max(0, basePrice - promoDiscount));
         var pointsDiscount = CalculatePointsDiscount(request.PointsToRedeem);
         var pointsEarned = CalculatePointsEarned(booking.Customer?.TierConfig, promotion);
 
@@ -73,10 +104,11 @@ public class CheckoutService(
             return Result<CheckoutSummaryDto>.Fail("Insufficient points balance.");
         }
 
-        var finalPrice = Math.Max(0, basePrice - promoDiscount - pointsDiscount);
+        var finalPrice = Math.Max(0, basePrice - promoDiscount - voucherDiscount - pointsDiscount);
         var completedAt = DateTime.UtcNow;
 
         booking.PromotionId = promotion?.PromotionId;
+        booking.VoucherId = voucher?.VoucherId;
         booking.BasePrice = basePrice;
         booking.FinalPrice = finalPrice;
         booking.PointsRedeemed = request.PointsToRedeem;
@@ -84,6 +116,26 @@ public class CheckoutService(
         booking.CompletedAt = completedAt;
         booking.Status = BookingStatus.Completed;
         booking.PerksApplied = promotion is null ? null : $"{promotion.RewardType}:{promotion.RewardValue}";
+
+        // db-review 3.2: stamp the voucher with the booking that consumed it.
+        if (voucher is not null)
+        {
+            voucher.IsUsed = true;
+            voucher.UsedInBookingId = booking.BookingId;
+        }
+
+        // db-review 3.4: record promotion usage for registered customers.
+        if (promotion is not null && booking.CustomerId is Guid usageCustomerId)
+        {
+            _db.PromotionUsages.Add(new PromotionUsage
+            {
+                UsageId = Guid.NewGuid(),
+                PromotionId = promotion.PromotionId,
+                CustomerId = usageCustomerId,
+                BookingId = booking.BookingId,
+                CreatedAt = completedAt
+            });
+        }
 
         int? newPointsBalance = null;
         if (booking.Customer is not null)
@@ -144,6 +196,8 @@ public class CheckoutService(
             CustomerId = booking.CustomerId,
             BasePrice = basePrice,
             PromotionDiscount = promoDiscount,
+            VoucherDiscount = voucherDiscount,
+            VoucherId = voucher?.VoucherId,
             PointsDiscount = pointsDiscount,
             FinalPrice = finalPrice,
             PointsRedeemed = request.PointsToRedeem,
@@ -158,6 +212,7 @@ public class CheckoutService(
         var scheduledDate = DateOnly.FromDateTime(scheduledAt);
         var promotion = await _db.Promotions
             .Include(entity => entity.MinTier)
+            .Include(entity => entity.MaxTier)
             .SingleOrDefaultAsync(entity =>
                 entity.PromotionId == promotionId
                 && entity.IsActive
@@ -170,7 +225,59 @@ public class CheckoutService(
         }
 
         var customerRank = customer?.TierConfig.RankOrder ?? 1;
-        return promotion.MinTier.RankOrder <= customerRank ? promotion : null;
+        if (promotion.MinTier.RankOrder > customerRank)
+        {
+            return null;
+        }
+
+        // db-review 3.4: optional upper tier bound.
+        if (promotion.MaxTier is not null && promotion.MaxTier.RankOrder < customerRank)
+        {
+            return null;
+        }
+
+        return promotion;
+    }
+
+    private async Task<string?> ValidatePromotionUsageLimitsAsync(Promotion promotion, Guid customerId, Guid bookingId)
+    {
+        if (promotion.UsageLimitPerCustomer is int perCustomer)
+        {
+            var customerUsage = await _db.PromotionUsages.CountAsync(usage =>
+                usage.PromotionId == promotion.PromotionId
+                && usage.CustomerId == customerId
+                && usage.BookingId != bookingId);
+            if (customerUsage >= perCustomer)
+            {
+                return "You have reached the usage limit for this promotion.";
+            }
+        }
+
+        if (promotion.TotalUsageLimit is int total)
+        {
+            var totalUsage = await _db.PromotionUsages.CountAsync(usage =>
+                usage.PromotionId == promotion.PromotionId
+                && usage.BookingId != bookingId);
+            if (totalUsage >= total)
+            {
+                return "This promotion has reached its total redemption limit.";
+            }
+        }
+
+        return null;
+    }
+
+    private async Task<CustomerVoucher?> GetUsableVoucherAsync(Guid voucherId, Guid? customerId, Guid bookingId)
+    {
+        if (customerId is null)
+        {
+            return null;
+        }
+
+        return await _db.CustomerVouchers.SingleOrDefaultAsync(voucher =>
+            voucher.VoucherId == voucherId
+            && voucher.CustomerId == customerId
+            && (!voucher.IsUsed || voucher.UsedInBookingId == bookingId));
     }
 
     private static decimal CalculatePromotionDiscount(Promotion? promotion, decimal basePrice)

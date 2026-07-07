@@ -6,6 +6,8 @@ public class CheckoutSummaryDto
     public Guid? CustomerId { get; set; }
     public decimal BasePrice { get; set; }
     public decimal PromotionDiscount { get; set; }
+    public decimal VoucherDiscount { get; set; }
+    public Guid? VoucherId { get; set; }
     public decimal PointsDiscount { get; set; }
     public decimal FinalPrice { get; set; }
     public int PointsRedeemed { get; set; }

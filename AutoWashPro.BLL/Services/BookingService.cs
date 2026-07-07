@@ -124,6 +124,7 @@ public class BookingService(
             VehicleId = request.VehicleId,
             PricingId = request.PricingId,
             PromotionId = request.PromotionId,
+            VoucherId = request.VoucherId,
             CreatedBy = null,
             ScheduledAt = scheduledAt,
             ExpectedEndAt = expectedEndAt,
@@ -232,6 +233,8 @@ public class BookingService(
 
         booking.Status = BookingStatus.Cancelled;
         booking.CancelReason = "Cancelled by customer";
+        // db-review 3.2: release the voucher selection so it can be reused (it is only consumed at checkout).
+        booking.VoucherId = null;
         await _db.SaveChangesAsync();
 
         _logger.LogInformation("Customer {CustomerId} cancelled booking {BookingId}.", customerId, bookingId);
@@ -395,6 +398,18 @@ public class BookingService(
             return Result<(ServicePricing, Customer)>.Fail("Promotion is not valid for this booking.");
         }
 
+        if (request.VoucherId.HasValue)
+        {
+            var voucherIsUsable = await _db.CustomerVouchers.AnyAsync(voucher =>
+                voucher.VoucherId == request.VoucherId.Value
+                && voucher.CustomerId == customerId
+                && !voucher.IsUsed);
+            if (!voucherIsUsable)
+            {
+                return Result<(ServicePricing, Customer)>.Fail("Voucher is not valid for this booking.");
+            }
+        }
+
         return Result<(ServicePricing, Customer)>.Ok((pricing, customer));
     }
 
@@ -486,7 +501,8 @@ public class BookingService(
                 && promotion.IsActive
                 && promotion.StartDate <= scheduledDate
                 && promotion.EndDate >= scheduledDate
-                && promotion.MinTier.RankOrder <= customerTierRank);
+                && promotion.MinTier.RankOrder <= customerTierRank
+                && (promotion.MaxTierId == null || promotion.MaxTier!.RankOrder >= customerTierRank));
     }
 
     private async Task<bool> IsRangeAvailableAsync(DateTime scheduledAt, DateTime expectedEndAt)

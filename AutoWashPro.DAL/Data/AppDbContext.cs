@@ -31,6 +31,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<VehicleType> VehicleTypes => Set<VehicleType>();
     public DbSet<VoucherRedemptionRule> VoucherRedemptionRules => Set<VoucherRedemptionRule>();
     public DbSet<CustomerVoucher> CustomerVouchers => Set<CustomerVoucher>();
+    public DbSet<PromotionUsage> PromotionUsages => Set<PromotionUsage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -50,6 +51,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         ConfigureVehicleType(modelBuilder);
         ConfigureVoucherRedemptionRule(modelBuilder);
         ConfigureCustomerVoucher(modelBuilder);
+        ConfigurePromotionUsage(modelBuilder);
         SeedData(modelBuilder);
     }
 
@@ -80,6 +82,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(vehicle => vehicle.Brand).HasMaxLength(100);
             entity.Property(vehicle => vehicle.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
             entity.HasIndex(vehicle => vehicle.LicensePlate).IsUnique();
+            entity.HasIndex(vehicle => vehicle.VehicleTypeId);
             entity.HasOne(vehicle => vehicle.Customer)
                 .WithMany(customer => customer.Vehicles)
                 .HasForeignKey(vehicle => vehicle.CustomerId)
@@ -166,6 +169,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .HasForeignKey(booking => booking.PromotionId)
                 .IsRequired(false)
                 .OnDelete(DeleteBehavior.NoAction);
+            entity.HasIndex(booking => booking.VoucherId);
+            entity.HasOne(booking => booking.Voucher)
+                .WithMany()
+                .HasForeignKey(booking => booking.VoucherId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.NoAction);
             entity.HasOne(booking => booking.CreatedByUser)
                 .WithMany(user => user.CreatedBookings)
                 .HasForeignKey(booking => booking.CreatedBy)
@@ -222,10 +231,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(promotion => promotion.RewardType).HasConversion<string>().HasMaxLength(30);
             entity.Property(promotion => promotion.RewardValue).HasPrecision(18, 2);
             entity.Property(promotion => promotion.IsActive).HasDefaultValue(true);
+            entity.Property(promotion => promotion.IsStackable).HasDefaultValue(false);
             entity.Property(promotion => promotion.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
             entity.HasOne(promotion => promotion.MinTier)
                 .WithMany(tier => tier.Promotions)
                 .HasForeignKey(promotion => promotion.MinTierId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasIndex(promotion => promotion.MaxTierId);
+            entity.HasOne(promotion => promotion.MaxTier)
+                .WithMany()
+                .HasForeignKey(promotion => promotion.MaxTierId)
+                .IsRequired(false)
                 .OnDelete(DeleteBehavior.NoAction);
         });
     }
@@ -312,6 +328,36 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasOne(v => v.VoucherRule)
                 .WithMany(r => r.CustomerVouchers)
                 .HasForeignKey(v => v.VoucherRuleId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasIndex(v => v.UsedInBookingId);
+            entity.HasOne(v => v.UsedInBooking)
+                .WithMany()
+                .HasForeignKey(v => v.UsedInBookingId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+    }
+
+    private static void ConfigurePromotionUsage(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<PromotionUsage>(entity =>
+        {
+            entity.HasKey(usage => usage.UsageId);
+            entity.Property(usage => usage.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
+            entity.HasIndex(usage => new { usage.PromotionId, usage.CustomerId });
+            entity.HasIndex(usage => usage.CustomerId);
+            entity.HasIndex(usage => usage.BookingId);
+            entity.HasOne(usage => usage.Promotion)
+                .WithMany(promotion => promotion.Usages)
+                .HasForeignKey(usage => usage.PromotionId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(usage => usage.Customer)
+                .WithMany()
+                .HasForeignKey(usage => usage.CustomerId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(usage => usage.Booking)
+                .WithMany()
+                .HasForeignKey(usage => usage.BookingId)
                 .OnDelete(DeleteBehavior.NoAction);
         });
     }

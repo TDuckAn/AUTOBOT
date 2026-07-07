@@ -12,6 +12,8 @@ public class CreateBookingRequestDto
 
     public Guid? PromotionId { get; set; }
 
+    public Guid? VoucherId { get; set; }
+
     [Required]
     public DateTime ScheduledAt { get; set; }
 }

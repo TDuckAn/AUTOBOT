@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { cancelBooking, createBooking, getAvailability, getLoyalty, getMyBookings, getVehicles } from '../../api/customer.js'
 import { getApiError, unwrapPaged } from '../../api/client.js'
 import { listPricing, listServices } from '../../api/services.js'
+import { listMyVouchers } from '../../api/vouchers.js'
 import { StatusPill } from '../../components/badges.jsx'
 import { Icons } from '../../components/icons.jsx'
 import { CustomerShell } from '../../components/layout/CustomerShell.jsx'
@@ -24,6 +25,8 @@ export function CustomerBookings() {
   const [scheduledAt, setScheduledAt] = useState('')
   const [vehicleId, setVehicleId] = useState('')
   const [vehicles, setVehicles] = useState([])
+  const [vouchers, setVouchers] = useState([])
+  const [voucherId, setVoucherId] = useState('')
   const [bookingWindowDays, setBookingWindowDays] = useState(0)
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -68,6 +71,11 @@ export function CustomerBookings() {
             setVehicleId(rows[0].vehicleId)
           }
         })
+        .catch(() => {})
+
+      // Load customer's unused vouchers
+      listMyVouchers()
+        .then((d) => setVouchers((Array.isArray(d) ? d : unwrapPaged(d)).filter((v) => !v.isUsed)))
         .catch(() => {})
 
       getLoyalty()
@@ -141,6 +149,10 @@ export function CustomerBookings() {
 
   const selectedPricing = pricingOptions.find((option) => option.pricing.pricingId === pricingId)
   const selectedServiceHighlights = extractServiceHighlightsForDisplay(selectedPricing?.service?.description)
+  const selectedVoucher = vouchers.find((v) => v.voucherId === voucherId)
+  const basePrice = selectedPricing?.pricing.price ?? 0
+  const voucherDiscount = selectedVoucher ? Math.min(selectedVoucher.discountAmount, basePrice) : 0
+  const estimatedTotal = Math.max(0, basePrice - voucherDiscount)
 
   const handleDateChange = (value) => {
     if (!value) {
@@ -189,7 +201,7 @@ export function CustomerBookings() {
     setMessage('')
     setSubmitting(true)
     try {
-      await createBooking({ vehicleId, pricingId, scheduledAt })
+      await createBooking({ vehicleId, pricingId, voucherId: voucherId || undefined, scheduledAt })
       setMessage('Đặt lịch thành công!')
       setView('list')
       await loadBookings()
@@ -452,6 +464,33 @@ export function CustomerBookings() {
                 Giờ nhận lịch cho khách hàng: 08:00 - 17:00.
               </div>
             </div>
+
+            {vouchers.length > 0 && (
+              <>
+                <SectionHeader n="4" title="Voucher" sub="Áp dụng voucher (tuỳ chọn)" />
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px,1fr))', gap: 10, marginBottom: 20 }}>
+                  <label className="aw-card" style={{ padding: '12px 14px', cursor: 'pointer', borderColor: !voucherId ? 'var(--primary)' : 'var(--border)', background: !voucherId ? 'var(--primary-soft)' : 'var(--surface)' }}>
+                    <input type="radio" name="voucher" checked={!voucherId} onChange={() => setVoucherId('')} style={{ position: 'absolute', opacity: 0 }} />
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>Không dùng voucher</div>
+                  </label>
+                  {vouchers.map((v) => {
+                    const checked = voucherId === v.voucherId
+                    return (
+                      <label key={v.voucherId} className="aw-card" style={{ padding: '12px 14px', cursor: 'pointer', borderColor: checked ? 'var(--primary)' : 'var(--border)', background: checked ? 'var(--primary-soft)' : 'var(--surface)' }}>
+                        <input type="radio" name="voucher" checked={checked} onChange={() => setVoucherId(v.voucherId)} style={{ position: 'absolute', opacity: 0 }} />
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Geist Mono',monospace" }}>{v.code}</div>
+                            <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 2 }}>{v.ruleName}</div>
+                          </div>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--green-ink)', fontFamily: "'Geist Mono',monospace" }}>−{formatVND(v.discountAmount)}</div>
+                        </div>
+                      </label>
+                    )
+                  })}
+                </div>
+              </>
+            )}
           </div>
 
           <aside style={{ width: 'clamp(320px, 24vw, 440px)', flexShrink: 0, background: 'var(--surface)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
@@ -517,10 +556,22 @@ export function CustomerBookings() {
               )}
             </div>
             <div style={{ padding: '14px 18px', borderTop: '1px solid var(--border)' }}>
+              {selectedVoucher && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                    <span style={{ color: 'var(--ink-500)' }}>Tạm tính</span>
+                    <span style={{ fontFamily: "'Geist Mono',monospace" }}>{formatVND(basePrice)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 8, color: 'var(--green-ink)' }}>
+                    <span>Voucher {selectedVoucher.code}</span>
+                    <span style={{ fontFamily: "'Geist Mono',monospace" }}>−{formatVND(voucherDiscount)}</span>
+                  </div>
+                </>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
                 <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>Tổng cộng</span>
                 <span style={{ fontSize: 22, fontWeight: 800, fontFamily: "'Geist Mono',monospace" }}>
-                  {formatVND(selectedPricing?.pricing.price ?? 0)}
+                  {formatVND(estimatedTotal)}
                 </span>
               </div>
               <button

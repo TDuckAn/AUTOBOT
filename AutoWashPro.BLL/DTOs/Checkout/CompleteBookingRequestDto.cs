@@ -6,6 +6,8 @@ public class CompleteBookingRequestDto
 {
     public Guid? PromotionId { get; set; }
 
+    public Guid? VoucherId { get; set; }
+
     [Range(0, int.MaxValue)]
     public int PointsToRedeem { get; set; }
 }

@@ -10,7 +10,7 @@ import { Field, PageContainer, Td, Th } from '../../components/ui.jsx'
 import { formatVND } from '../../utils/format.js'
 
 const today = new Date().toISOString().slice(0, 10)
-const blank = { name: '', description: '', rewardType: 'Discount', rewardValue: 0, startDate: today, endDate: today, minTierId: '', isActive: true }
+const blank = { name: '', description: '', rewardType: 'Discount', rewardValue: 0, startDate: today, endDate: today, minTierId: '', maxTierId: '', isStackable: false, usageLimitPerCustomer: '', totalUsageLimit: '', isActive: true }
 const blankRule = { name: '', description: '', pointCost: 100, discountAmount: 10000, isActive: true }
 
 export function AdminPromotions() {
@@ -52,6 +52,10 @@ export function AdminPromotions() {
       startDate: String(promo.startDate).slice(0, 10),
       endDate: String(promo.endDate).slice(0, 10),
       minTierId: promo.minTierId,
+      maxTierId: promo.maxTierId ?? '',
+      isStackable: promo.isStackable ?? false,
+      usageLimitPerCustomer: promo.usageLimitPerCustomer ?? '',
+      totalUsageLimit: promo.totalUsageLimit ?? '',
       isActive: promo.isActive,
     })
   }
@@ -64,7 +68,13 @@ export function AdminPromotions() {
   const submit = async (event) => {
     event.preventDefault()
     try {
-      const saved = selected ? await updatePromotion(selected.promotionId, form) : await createPromotion(form)
+      const payload = {
+        ...form,
+        maxTierId: form.maxTierId || null,
+        usageLimitPerCustomer: form.usageLimitPerCustomer === '' ? null : Number(form.usageLimitPerCustomer),
+        totalUsageLimit: form.totalUsageLimit === '' ? null : Number(form.totalUsageLimit),
+      }
+      const saved = selected ? await updatePromotion(selected.promotionId, payload) : await createPromotion(payload)
       setMessage(selected ? 'Đã cập nhật khuyến mãi.' : 'Đã tạo khuyến mãi.')
       await refresh()
       select(saved)
@@ -179,7 +189,13 @@ export function AdminPromotions() {
               <Field label="Bắt đầu"><input className="aw-input" type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} /></Field>
               <Field label="Kết thúc"><input className="aw-input" type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} /></Field>
             </div>
-            <Field label="Hạng tối thiểu"><select className="aw-input" value={form.minTierId} onChange={(e) => setForm({ ...form, minTierId: e.target.value })}>{tiers.map((tier) => <option key={tier.tierId} value={tier.tierId}>{tier.tierName}</option>)}</select></Field>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <Field label="Hạng tối thiểu"><select className="aw-input" value={form.minTierId} onChange={(e) => setForm({ ...form, minTierId: e.target.value })}>{tiers.map((tier) => <option key={tier.tierId} value={tier.tierId}>{tier.tierName}</option>)}</select></Field>
+              <Field label="Hạng tối đa (tuỳ chọn)"><select className="aw-input" value={form.maxTierId} onChange={(e) => setForm({ ...form, maxTierId: e.target.value })}><option value="">Không giới hạn</option>{tiers.map((tier) => <option key={tier.tierId} value={tier.tierId}>{tier.tierName}</option>)}</select></Field>
+              <Field label="Giới hạn/khách (trống = ∞)"><input className="aw-input" type="number" min={1} value={form.usageLimitPerCustomer} onChange={(e) => setForm({ ...form, usageLimitPerCustomer: e.target.value })} /></Field>
+              <Field label="Tổng lượt (trống = ∞)"><input className="aw-input" type="number" min={1} value={form.totalUsageLimit} onChange={(e) => setForm({ ...form, totalUsageLimit: e.target.value })} /></Field>
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}><input type="checkbox" checked={form.isStackable} onChange={(e) => setForm({ ...form, isStackable: e.target.checked })} /> Cho phép dùng kèm voucher (stackable)</label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}><input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} /> Đang hoạt động</label>
             <button className="aw-btn aw-btn-primary" style={{ alignSelf: 'flex-start' }}>Lưu</button>
           </form>

@@ -22,6 +22,7 @@ public class PromotionService(
         var query = _db.Promotions
             .AsNoTracking()
             .Include(promotion => promotion.MinTier)
+            .Include(promotion => promotion.MaxTier)
             .AsQueryable();
 
         if (!includeInactive)
@@ -38,6 +39,7 @@ public class PromotionService(
         var promotion = await _db.Promotions
             .AsNoTracking()
             .Include(entity => entity.MinTier)
+            .Include(entity => entity.MaxTier)
             .SingleOrDefaultAsync(entity => entity.PromotionId == promotionId);
 
         return promotion is null
@@ -61,8 +63,12 @@ public class PromotionService(
             StartDate = request.StartDate,
             EndDate = request.EndDate,
             MinTierId = request.MinTierId,
+            MaxTierId = request.MaxTierId,
             RewardType = request.RewardType,
             RewardValue = request.RewardValue,
+            IsStackable = request.IsStackable,
+            UsageLimitPerCustomer = request.UsageLimitPerCustomer,
+            TotalUsageLimit = request.TotalUsageLimit,
             IsActive = request.IsActive,
             CreatedAt = DateTime.UtcNow
         };
@@ -71,6 +77,9 @@ public class PromotionService(
         await _db.SaveChangesAsync();
 
         promotion.MinTier = (await _db.TierConfigs.FindAsync(promotion.MinTierId))!;
+        promotion.MaxTier = promotion.MaxTierId.HasValue
+            ? await _db.TierConfigs.FindAsync(promotion.MaxTierId.Value)
+            : null;
         _logger.LogInformation("Created promotion {PromotionId}.", promotion.PromotionId);
         return Result<PromotionDto>.Ok(ToDto(promotion));
     }
@@ -79,6 +88,7 @@ public class PromotionService(
     {
         var promotion = await _db.Promotions
             .Include(entity => entity.MinTier)
+            .Include(entity => entity.MaxTier)
             .SingleOrDefaultAsync(entity => entity.PromotionId == promotionId);
 
         if (promotion is null)
@@ -97,12 +107,19 @@ public class PromotionService(
         promotion.StartDate = request.StartDate;
         promotion.EndDate = request.EndDate;
         promotion.MinTierId = request.MinTierId;
+        promotion.MaxTierId = request.MaxTierId;
         promotion.RewardType = request.RewardType;
         promotion.RewardValue = request.RewardValue;
+        promotion.IsStackable = request.IsStackable;
+        promotion.UsageLimitPerCustomer = request.UsageLimitPerCustomer;
+        promotion.TotalUsageLimit = request.TotalUsageLimit;
         promotion.IsActive = request.IsActive;
 
         await _db.SaveChangesAsync();
         promotion.MinTier = (await _db.TierConfigs.FindAsync(promotion.MinTierId))!;
+        promotion.MaxTier = promotion.MaxTierId.HasValue
+            ? await _db.TierConfigs.FindAsync(promotion.MaxTierId.Value)
+            : null;
 
         _logger.LogInformation("Updated promotion {PromotionId}.", promotion.PromotionId);
         return Result<PromotionDto>.Ok(ToDto(promotion));
@@ -174,10 +191,24 @@ public class PromotionService(
             return "Start date must be on or before end date.";
         }
 
-        var minTierExists = await _db.TierConfigs.AnyAsync(tier => tier.TierId == request.MinTierId);
-        if (!minTierExists)
+        var minTier = await _db.TierConfigs.AsNoTracking().SingleOrDefaultAsync(tier => tier.TierId == request.MinTierId);
+        if (minTier is null)
         {
             return "Minimum tier was not found.";
+        }
+
+        if (request.MaxTierId.HasValue)
+        {
+            var maxTier = await _db.TierConfigs.AsNoTracking().SingleOrDefaultAsync(tier => tier.TierId == request.MaxTierId.Value);
+            if (maxTier is null)
+            {
+                return "Maximum tier was not found.";
+            }
+
+            if (maxTier.RankOrder < minTier.RankOrder)
+            {
+                return "Maximum tier must rank at or above the minimum tier.";
+            }
         }
 
         if (request.RewardType != RewardType.FreeWash && request.RewardValue <= 0)
@@ -204,8 +235,13 @@ public class PromotionService(
             EndDate = promotion.EndDate,
             MinTierId = promotion.MinTierId,
             MinTierName = promotion.MinTier.TierName,
+            MaxTierId = promotion.MaxTierId,
+            MaxTierName = promotion.MaxTier?.TierName,
             RewardType = promotion.RewardType,
             RewardValue = promotion.RewardValue,
+            IsStackable = promotion.IsStackable,
+            UsageLimitPerCustomer = promotion.UsageLimitPerCustomer,
+            TotalUsageLimit = promotion.TotalUsageLimit,
             IsActive = promotion.IsActive,
             CreatedAt = promotion.CreatedAt
         };

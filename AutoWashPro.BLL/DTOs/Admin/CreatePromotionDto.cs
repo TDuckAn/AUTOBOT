@@ -21,11 +21,21 @@ public class CreatePromotionDto
     [Required]
     public Guid MinTierId { get; set; }
 
+    public Guid? MaxTierId { get; set; }
+
     [Required]
     public RewardType RewardType { get; set; }
 
     [Range(0, 9999999999999999)]
     public decimal RewardValue { get; set; }
+
+    public bool IsStackable { get; set; }
+
+    [Range(1, int.MaxValue)]
+    public int? UsageLimitPerCustomer { get; set; }
+
+    [Range(1, int.MaxValue)]
+    public int? TotalUsageLimit { get; set; }
 
     public bool IsActive { get; set; } = true;
 }

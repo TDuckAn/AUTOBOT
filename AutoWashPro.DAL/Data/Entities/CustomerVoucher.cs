@@ -9,6 +9,8 @@ public class CustomerVoucher
     public decimal DiscountAmount { get; set; }
     public DateTime RedeemedAt { get; set; }
     public bool IsUsed { get; set; }
+    public Guid? UsedInBookingId { get; set; }
     public Customer Customer { get; set; } = null!;
     public VoucherRedemptionRule VoucherRule { get; set; } = null!;
+    public Booking? UsedInBooking { get; set; }
 }
