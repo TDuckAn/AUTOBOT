@@ -34,6 +34,34 @@ public class PromotionService(
         return Result<PagedResultDto<PromotionDto>>.Ok(await ordered.ToPagedResultAsync(page, pageSize, ToDto));
     }
 
+    public async Task<Result<PagedResultDto<PromotionDto>>> GetAvailablePromotionsAsync(Guid customerId, int page, int pageSize)
+    {
+        var customer = await _db.Customers
+            .AsNoTracking()
+            .Include(entity => entity.TierConfig)
+            .SingleOrDefaultAsync(entity => entity.CustomerId == customerId);
+
+        if (customer is null)
+        {
+            return Result<PagedResultDto<PromotionDto>>.Fail("Customer was not found.");
+        }
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var query = _db.Promotions
+            .AsNoTracking()
+            .Include(promotion => promotion.MinTier)
+            .Include(promotion => promotion.MaxTier)
+            .Where(promotion =>
+                promotion.IsActive
+                && promotion.StartDate <= today
+                && promotion.EndDate >= today
+                && promotion.MinTier.RankOrder <= customer.TierConfig.RankOrder
+                && (promotion.MaxTierId == null || promotion.MaxTier!.RankOrder >= customer.TierConfig.RankOrder))
+            .OrderByDescending(promotion => promotion.CreatedAt);
+
+        return Result<PagedResultDto<PromotionDto>>.Ok(await query.ToPagedResultAsync(page, pageSize, ToDto));
+    }
+
     public async Task<Result<PromotionDto>> GetPromotionAsync(Guid promotionId)
     {
         var promotion = await _db.Promotions

@@ -5,6 +5,11 @@ export async function listPromotions(params = {}) {
   return data
 }
 
+export async function listMyPromotions(params = {}) {
+  const { data } = await client.get('/customers/me/promotions', { params: { page: 1, pageSize: 20, ...params } })
+  return data
+}
+
 export async function createPromotion(payload) {
   const { data } = await client.post('/admin/promotions', payload)
   return data

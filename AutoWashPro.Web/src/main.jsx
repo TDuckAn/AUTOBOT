@@ -18,6 +18,7 @@ const AdminTiers = lazy(() => import('./pages/admin/AdminTiers.jsx').then((m) =>
 const AdminCustomers = lazy(() => import('./pages/admin/AdminCustomers.jsx').then((m) => ({ default: m.AdminCustomers })))
 const CustomerDashboard = lazy(() => import('./pages/customer/CustomerDashboard.jsx').then((m) => ({ default: m.CustomerDashboard })))
 const CustomerBookings = lazy(() => import('./pages/customer/CustomerBookings.jsx').then((m) => ({ default: m.CustomerBookings })))
+const CustomerPromotions = lazy(() => import('./pages/customer/CustomerPromotions.jsx').then((m) => ({ default: m.CustomerPromotions })))
 const CustomerVehicles = lazy(() => import('./pages/customer/CustomerVehicles.jsx').then((m) => ({ default: m.CustomerVehicles })))
 const CustomerRewards = lazy(() => import('./pages/customer/CustomerRewards.jsx').then((m) => ({ default: m.CustomerRewards })))
 
@@ -53,6 +54,7 @@ const router = createBrowserRouter([
   // ── Customer (role = 'Customer') ────────────────────────
   { path: '/customer/dashboard', element: guarded('Customer', <CustomerDashboard />) },
   { path: '/customer/bookings', element: guarded('Customer', <CustomerBookings />) },
+  { path: '/customer/promotions', element: guarded('Customer', <CustomerPromotions />) },
   { path: '/customer/vehicles', element: guarded('Customer', <CustomerVehicles />) },
   { path: '/customer/rewards', element: guarded('Customer', <CustomerRewards />) },
 
