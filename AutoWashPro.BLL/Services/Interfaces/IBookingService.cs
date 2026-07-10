@@ -11,6 +11,7 @@ public interface IBookingService
     Task<Result<BookingResponseDto>> CreateBookingAsync(Guid customerId, CreateBookingRequestDto request);
     Task<Result<BookingResponseDto>> CreateWalkInBookingAsync(Guid systemUserId, CreateWalkInBookingRequestDto request);
     Task<Result<bool>> CancelBookingAsync(Guid customerId, Guid bookingId);
+    Task<Result<bool>> CancelBookingByStaffAsync(Guid systemUserId, Guid bookingId);
     Task<Result<PagedResultDto<BookingResponseDto>>> GetCustomerBookingsAsync(Guid customerId, int page, int pageSize);
     Task<Result<PagedResultDto<BookingResponseDto>>> GetAdminBookingsAsync(
         int page,

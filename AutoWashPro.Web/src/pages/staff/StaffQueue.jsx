@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { completeBooking, getBookings } from '../../api/bookings.js'
+import { cancelBookingByStaff, completeBooking, getBookings } from '../../api/bookings.js'
 import { getApiError, unwrapPaged } from '../../api/client.js'
 import { Icons } from '../../components/icons.jsx'
 import { StaffShell } from '../../components/layout/StaffShell.jsx'
@@ -17,16 +17,15 @@ export function StaffQueue() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [actionBookingId, setActionBookingId] = useState(null)
 
   useEffect(() => {
     let alive = true
-    // Load ALL of today's bookings (both Confirmed and Completed)
     getBookings({ date: TODAY, pageSize: 200 })
       .then((data) => {
         if (!alive) return
         const rows = unwrapPaged(data).sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))
         setBookings(rows)
-        // Auto-select first pending item
         const first = rows.find((b) => b.status === 'Confirmed')
         setSelectedId(first?.bookingId ?? rows[0]?.bookingId ?? null)
       })
@@ -43,38 +42,79 @@ export function StaffQueue() {
   )
 
   const selected = useMemo(() => bookings.find((b) => b.bookingId === selectedId), [bookings, selectedId])
+  const canCancelByStaff = (booking) => booking?.status === 'Confirmed' && new Date(booking.scheduledAt) <= new Date()
+
+  const moveSelectionToNextPending = (bookingId) => {
+    setSelectedId((current) => {
+      if (current !== bookingId) return current
+      const next = pending.find((booking) => booking.bookingId !== bookingId)
+      return next?.bookingId ?? null
+    })
+  }
 
   const complete = async (booking) => {
     setError('')
     setMessage('')
+    setActionBookingId(booking.bookingId)
     try {
       await completeBooking(booking.bookingId, 0)
-      setBookings((cur) =>
-        cur.map((b) =>
-          b.bookingId === booking.bookingId
-            ? { ...b, status: 'Completed', completedAt: new Date().toISOString() }
-            : b,
+      setBookings((current) =>
+        current.map((item) =>
+          item.bookingId === booking.bookingId
+            ? { ...item, status: 'Completed', completedAt: new Date().toISOString() }
+            : item,
         ),
       )
-      // Move selection to next pending
-      setSelectedId((cur) => {
-        if (cur !== booking.bookingId) return cur
-        const next = pending.find((b) => b.bookingId !== booking.bookingId)
-        return next?.bookingId ?? null
-      })
-      setMessage('Hoàn tất!')
+      moveSelectionToNextPending(booking.bookingId)
+      setMessage('Hoan tat!')
     } catch (err) {
       setError(getApiError(err, 'Không thể hoàn tất booking.'))
+    } finally {
+      setActionBookingId(null)
+    }
+  }
+
+  const cancel = async (booking) => {
+    if (!canCancelByStaff(booking)) {
+      return
+    }
+
+    const confirmed = window.confirm('Hủy lịch hẹn này vì khách chưa đến và đã quá giờ hẹn?')
+    if (!confirmed) {
+      return
+    }
+
+    setError('')
+    setMessage('')
+    setActionBookingId(booking.bookingId)
+    try {
+      await cancelBookingByStaff(booking.bookingId)
+      setBookings((current) =>
+        current.map((item) =>
+          item.bookingId === booking.bookingId
+            ? { ...item, status: 'Cancelled', cancelReason: 'Cancelled by staff due to customer no-show' }
+            : item,
+        ),
+      )
+      moveSelectionToNextPending(booking.bookingId)
+      setMessage('Đã hủy lịch hẹn.')
+    } catch (err) {
+      setError(getApiError(err, 'Không thể hủy booking.'))
+    } finally {
+      setActionBookingId(null)
     }
   }
 
   return (
-    <StaffShell active="queue" title="Hàng chờ hôm nay" queueCount={pending.length}
-      headerRight={
+    <StaffShell
+      active="queue"
+      title="Hàng chờ hôm nay"
+      queueCount={pending.length}
+      headerRight={(
         <button className="aw-btn aw-btn-primary aw-btn-sm" onClick={() => navigate('/staff/walkin')}>
-          <Icons.Plus size={13} sw={2.5} /> Thêm vãng lai
+          <Icons.Plus size={13} sw={2.5} /> Thêm khách vãng lai
         </button>
-      }
+      )}
     >
       <div style={{ display: 'flex', height: '100%' }}>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -83,7 +123,7 @@ export function StaffQueue() {
               ['Tổng hôm nay', bookings.length, 'var(--ink-900)'],
               ['Đang chờ', pending.length, 'var(--gold)'],
               ['Hoàn tất', completed.length, 'var(--green)'],
-              ['Doanh thu', completedRevenue ? formatVNDShort(completedRevenue) + '₫' : '-', 'var(--primary)'],
+              ['Doanh thu', completedRevenue ? `${formatVNDShort(completedRevenue)} VND` : '-', 'var(--primary)'],
             ].map(([label, value, color]) => (
               <div key={label} style={{ padding: '12px 18px', borderRight: '1px solid var(--border)' }}>
                 <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-500)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>{label}</div>
@@ -99,12 +139,19 @@ export function StaffQueue() {
               const isSelected = selectedId === booking.bookingId
               const isDone = booking.status !== 'Confirmed'
               return (
-                <div key={booking.bookingId} onClick={() => setSelectedId(booking.bookingId)} style={{
-                  display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--border)',
-                  background: isSelected ? 'var(--primary-soft)' : isDone ? 'rgba(0,0,0,0.015)' : 'var(--surface)',
-                  cursor: 'pointer', borderLeft: `3px solid ${isSelected ? 'var(--primary)' : 'transparent'}`,
-                  opacity: isDone ? 0.75 : 1,
-                }}>
+                <div
+                  key={booking.bookingId}
+                  onClick={() => setSelectedId(booking.bookingId)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    borderBottom: '1px solid var(--border)',
+                    background: isSelected ? 'var(--primary-soft)' : isDone ? 'rgba(0,0,0,0.015)' : 'var(--surface)',
+                    cursor: 'pointer',
+                    borderLeft: `3px solid ${isSelected ? 'var(--primary)' : 'transparent'}`,
+                    opacity: isDone ? 0.75 : 1,
+                  }}
+                >
                   <div style={{ width: 72, flexShrink: 0, padding: '16px 12px', textAlign: 'center', borderRight: '1px solid var(--border)' }}>
                     <div style={{ fontSize: 15, fontWeight: 800, fontFamily: "'Geist Mono',monospace" }}>{formatTime(booking.scheduledAt)}</div>
                   </div>
@@ -120,9 +167,30 @@ export function StaffQueue() {
                   <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
                     <div style={{ fontSize: 15, fontWeight: 800, fontFamily: "'Geist Mono',monospace" }}>{formatVND(booking.finalPrice)}</div>
                     {booking.status === 'Confirmed' && (
-                      <button className="aw-btn aw-btn-green aw-btn-sm" onClick={(e) => { e.stopPropagation(); complete(booking) }}>
-                        <Icons.Check size={12} sw={2.5} /> Hoàn tất
-                      </button>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          className="aw-btn aw-btn-green aw-btn-sm"
+                          disabled={actionBookingId === booking.bookingId}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            complete(booking)
+                          }}
+                        >
+                          <Icons.Check size={12} sw={2.5} /> Hoàn tất
+                        </button>
+                        {canCancelByStaff(booking) && (
+                          <button
+                            className="aw-btn aw-btn-danger aw-btn-sm"
+                            disabled={actionBookingId === booking.bookingId}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              cancel(booking)
+                            }}
+                          >
+                            <Icons.Trash size={12} /> Hủy
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -140,7 +208,7 @@ export function StaffQueue() {
                 <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-500)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>Đơn đang chọn</div>
                 <div style={{ fontSize: 16, fontWeight: 700 }}>{selected.walkinPhone ?? 'Khách thành viên'}</div>
                 <div style={{ fontSize: 12, color: 'var(--ink-500)', fontFamily: "'Geist Mono',monospace", marginTop: 1 }}>
-                  {selected.bookingId.slice(0, 8)} · {formatTime(selected.scheduledAt)}
+                  {selected.bookingId.slice(0, 8)} � {formatTime(selected.scheduledAt)}
                 </div>
               </div>
               <div className="aw-scroll" style={{ flex: 1, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -151,11 +219,22 @@ export function StaffQueue() {
                     ['Biển số / Loại xe', selected.walkinLicensePlate ?? selected.vehicleTypeName],
                     ['Giờ vào', formatTime(selected.scheduledAt)],
                     ['Dự kiến xong', formatTime(selected.expectedEndAt)],
-                    ['Trạng thái', selected.status === 'Confirmed' ? 'Đang chờ' : selected.status === 'Completed' ? 'Đã hoàn tất' : 'Đã huỷ'],
-                  ].map(([label, value], i) => (
-                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 12px', borderBottom: i < 4 ? '1px solid var(--surface-3)' : 'none', fontSize: 12 }}>
+                    ['Trạng thái', selected.status === 'Confirmed' ? 'Đang chờ' : selected.status === 'Completed' ? 'Đã hoàn tất' : 'Đã hủy'],
+                    ['Lý do hủy', selected.cancelReason ?? '-'],
+                  ].map(([label, value], index, rows) => (
+                    <div
+                      key={label}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        padding: '9px 12px',
+                        borderBottom: index < rows.length - 1 ? '1px solid var(--surface-3)' : 'none',
+                        fontSize: 12,
+                        gap: 10,
+                      }}
+                    >
                       <span style={{ color: 'var(--ink-500)' }}>{label}</span>
-                      <span style={{ fontWeight: 600 }}>{value}</span>
+                      <span style={{ fontWeight: 600, textAlign: 'right' }}>{value}</span>
                     </div>
                   ))}
                 </div>
@@ -168,9 +247,26 @@ export function StaffQueue() {
                   <span style={{ fontSize: 20, fontWeight: 800, fontFamily: "'Geist Mono',monospace" }}>{formatVND(selected.finalPrice)}</span>
                 </div>
                 {selected.status === 'Confirmed' && (
-                  <button className="aw-btn aw-btn-green" style={{ width: '100%', height: 40, fontSize: 14, fontWeight: 600 }} onClick={() => complete(selected)}>
-                    <Icons.Check size={15} sw={2.5} /> Hoàn tất & Thu tiền
-                  </button>
+                  <>
+                    <button
+                      className="aw-btn aw-btn-green"
+                      disabled={actionBookingId === selected.bookingId}
+                      style={{ width: '100%', height: 40, fontSize: 14, fontWeight: 600 }}
+                      onClick={() => complete(selected)}
+                    >
+                      <Icons.Check size={15} sw={2.5} /> Hoàn tất & Thu tiền
+                    </button>
+                    {canCancelByStaff(selected) && (
+                      <button
+                        className="aw-btn aw-btn-danger"
+                        disabled={actionBookingId === selected.bookingId}
+                        style={{ width: '100%', height: 40, fontSize: 14, fontWeight: 600 }}
+                        onClick={() => cancel(selected)}
+                      >
+                        <Icons.Trash size={15} /> Hủy vì khách chưa tới
+                      </button>
+                    )}
+                  </>
                 )}
                 {selected.status === 'Completed' && (
                   <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--green-ink)', fontWeight: 600 }}>

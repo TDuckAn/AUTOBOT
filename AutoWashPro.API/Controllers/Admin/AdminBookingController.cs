@@ -58,6 +58,25 @@ public class AdminBookingController(
         return result.IsSuccess ? Ok(result.Value) : BadRequest(result.Error);
     }
 
+    [HttpPost("{id:guid}/cancel")]
+    public async Task<IActionResult> CancelBooking(Guid id)
+    {
+        var systemUserId = GetPrincipalId();
+        if (systemUserId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _bookingService.CancelBookingByStaffAsync(systemUserId.Value, id);
+        if (!result.IsSuccess)
+        {
+            return BadRequest(result.Error);
+        }
+
+        _logger.LogInformation("System user {SystemUserId} cancelled booking {BookingId}.", systemUserId, id);
+        return NoContent();
+    }
+
     private Guid? GetPrincipalId()
     {
         var rawId = User.FindFirstValue(ClaimTypes.NameIdentifier)

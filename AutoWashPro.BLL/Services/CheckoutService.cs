@@ -241,27 +241,30 @@ public class CheckoutService(
 
     private async Task<string?> ValidatePromotionUsageLimitsAsync(Promotion promotion, Guid customerId, Guid bookingId)
     {
-        if (promotion.UsageLimitPerCustomer is int perCustomer)
-        {
-            var customerUsage = await _db.PromotionUsages.CountAsync(usage =>
-                usage.PromotionId == promotion.PromotionId
-                && usage.CustomerId == customerId
-                && usage.BookingId != bookingId);
-            if (customerUsage >= perCustomer)
+        var usageSummary = await _db.Bookings
+            .AsNoTracking()
+            .Where(booking =>
+                booking.PromotionId == promotion.PromotionId
+                && booking.Status != BookingStatus.Cancelled
+                && booking.BookingId != bookingId)
+            .GroupBy(_ => 1)
+            .Select(group => new
             {
-                return "You have reached the usage limit for this promotion.";
-            }
+                TotalUsage = group.Count(),
+                CustomerUsage = group.Count(booking => booking.CustomerId == customerId)
+            })
+            .SingleOrDefaultAsync();
+
+        if (promotion.UsageLimitPerCustomer is int perCustomer
+            && (usageSummary?.CustomerUsage ?? 0) >= perCustomer)
+        {
+            return "You have reached the usage limit for this promotion.";
         }
 
-        if (promotion.TotalUsageLimit is int total)
+        if (promotion.TotalUsageLimit is int total
+            && (usageSummary?.TotalUsage ?? 0) >= total)
         {
-            var totalUsage = await _db.PromotionUsages.CountAsync(usage =>
-                usage.PromotionId == promotion.PromotionId
-                && usage.BookingId != bookingId);
-            if (totalUsage >= total)
-            {
-                return "This promotion has reached its total redemption limit.";
-            }
+            return "This promotion has reached its total redemption limit.";
         }
 
         return null;

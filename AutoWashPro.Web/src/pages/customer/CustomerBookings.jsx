@@ -48,6 +48,22 @@ export function CustomerBookings() {
     }
   }
 
+  const loadPromotions = async () => {
+    try {
+      const data = await listMyPromotions({ pageSize: 100 })
+      setPromotions(unwrapPaged(data))
+    } catch {
+    }
+  }
+
+  const loadVouchers = async () => {
+    try {
+      const data = await listMyVouchers()
+      setVouchers((Array.isArray(data) ? data : unwrapPaged(data)).filter((voucher) => !voucher.isUsed))
+    } catch {
+    }
+  }
+
   useEffect(() => {
     Promise.resolve().then(() => {
       loadBookings()
@@ -76,14 +92,8 @@ export function CustomerBookings() {
         })
         .catch(() => {})
 
-      // Load customer's unused vouchers
-      listMyVouchers()
-        .then((d) => setVouchers((Array.isArray(d) ? d : unwrapPaged(d)).filter((v) => !v.isUsed)))
-        .catch(() => {})
-
-      listMyPromotions({ pageSize: 100 })
-        .then((data) => setPromotions(unwrapPaged(data)))
-        .catch(() => {})
+      loadVouchers()
+      loadPromotions()
 
       getLoyalty()
         .then((data) => setBookingWindowDays(Math.max(0, Number(data?.bookingWindowDays ?? 0))))
@@ -160,7 +170,7 @@ export function CustomerBookings() {
   const selectedVoucher = vouchers.find((v) => v.voucherId === voucherId)
   const basePrice = selectedPricing?.pricing.price ?? 0
   const promoDiscount = calculatePromotionDiscount(selectedPromotion, basePrice)
-  const voucherDiscount = selectedVoucher ? Math.min(selectedVoucher.discountAmount, basePrice) : 0
+  const voucherDiscount = selectedVoucher ? Math.min(selectedVoucher.discountAmount, Math.max(0, basePrice - promoDiscount)) : 0
   const estimatedTotal = Math.max(0, basePrice - promoDiscount - voucherDiscount)
 
   useEffect(() => {
@@ -224,8 +234,10 @@ export function CustomerBookings() {
         scheduledAt,
       })
       setMessage('Đặt lịch thành công!')
+      setPromotionId('')
+      setVoucherId('')
       setView('list')
-      await loadBookings()
+      await Promise.all([loadBookings(), loadPromotions(), loadVouchers()])
     } catch (err) {
       setError(getApiError(err, 'Không thể đặt lịch.'))
     } finally {
@@ -239,8 +251,8 @@ export function CustomerBookings() {
     setCancelSubmitting(true)
     try {
       await cancelBooking(id)
+      await Promise.all([loadBookings(), loadPromotions(), loadVouchers()])
       setMessage('Đã huỷ lịch.')
-      setBookings((prev) => prev.map((booking) => (booking.bookingId === id ? { ...booking, status: 'Cancelled' } : booking)))
       setCancelTarget(null)
     } catch (err) {
       setError(getApiError(err, 'Không thể huỷ lịch.'))

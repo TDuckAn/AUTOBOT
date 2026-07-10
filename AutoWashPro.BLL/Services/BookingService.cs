@@ -110,6 +110,13 @@ public class BookingService(
 
         var pricing = validation.Value!.Pricing;
         var expectedEndAt = scheduledAt.AddMinutes(pricing.DurationMinutes);
+        var promotion = request.PromotionId.HasValue
+            ? await _db.Promotions.AsNoTracking().SingleOrDefaultAsync(entity => entity.PromotionId == request.PromotionId.Value)
+            : null;
+        var voucher = request.VoucherId.HasValue
+            ? await _db.CustomerVouchers.AsNoTracking().SingleOrDefaultAsync(entity => entity.VoucherId == request.VoucherId.Value)
+            : null;
+        var finalPrice = CalculateBookingFinalPrice(pricing.Price, promotion, voucher);
 
         await using var tx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
         if (!await IsRangeAvailableAsync(scheduledAt, expectedEndAt))
@@ -132,7 +139,7 @@ public class BookingService(
             PointsEarned = 0,
             PointsRedeemed = 0,
             BasePrice = pricing.Price,
-            FinalPrice = pricing.Price,
+            FinalPrice = finalPrice,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -161,6 +168,10 @@ public class BookingService(
 
         var scheduledAt = GetBusinessNow().RoundDownToSlot(_slotDurationMinutes);
         var expectedEndAt = scheduledAt.AddMinutes(pricing.DurationMinutes);
+        var promotion = request.PromotionId.HasValue
+            ? await _db.Promotions.AsNoTracking().SingleOrDefaultAsync(entity => entity.PromotionId == request.PromotionId.Value)
+            : null;
+        var finalPrice = CalculateBookingFinalPrice(pricing.Price, promotion, null);
 
         var phone = request.WalkinPhone.Trim();
         var licensePlate = request.WalkinLicensePlate.Trim();
@@ -198,7 +209,7 @@ public class BookingService(
             WalkinPhone = phone,
             WalkinLicensePlate = licensePlate,
             BasePrice = pricing.Price,
-            FinalPrice = pricing.Price,
+            FinalPrice = finalPrice,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -238,6 +249,39 @@ public class BookingService(
         await _db.SaveChangesAsync();
 
         _logger.LogInformation("Customer {CustomerId} cancelled booking {BookingId}.", customerId, bookingId);
+        return Result<bool>.Ok(true);
+    }
+
+    public async Task<Result<bool>> CancelBookingByStaffAsync(Guid systemUserId, Guid bookingId)
+    {
+        var systemUserExists = await _db.SystemUsers.AnyAsync(user => user.UserId == systemUserId);
+        if (!systemUserExists)
+        {
+            return Result<bool>.Fail("System user was not found.");
+        }
+
+        var booking = await _db.Bookings.SingleOrDefaultAsync(entity => entity.BookingId == bookingId);
+        if (booking is null)
+        {
+            return Result<bool>.Fail("Booking was not found.");
+        }
+
+        if (booking.Status != BookingStatus.Confirmed)
+        {
+            return Result<bool>.Fail("Only confirmed bookings can be cancelled.");
+        }
+
+        if (booking.ScheduledAt > GetBusinessNow())
+        {
+            return Result<bool>.Fail("Staff can only cancel bookings that have reached their scheduled time.");
+        }
+
+        booking.Status = BookingStatus.Cancelled;
+        booking.CancelReason = "Cancelled by staff due to customer no-show";
+        booking.VoucherId = null;
+        await _db.SaveChangesAsync();
+
+        _logger.LogInformation("System user {SystemUserId} cancelled booking {BookingId}.", systemUserId, bookingId);
         return Result<bool>.Ok(true);
     }
 
@@ -393,9 +437,20 @@ public class BookingService(
             return Result<(ServicePricing, Customer)>.Fail("Scheduled time exceeds the customer's booking window.");
         }
 
-        if (request.PromotionId.HasValue && !await IsPromotionUsableAsync(request.PromotionId.Value, customer.TierConfig.RankOrder, scheduledAt))
+        if (request.PromotionId.HasValue && !await IsPromotionUsableAsync(request.PromotionId.Value, customer.CustomerId, customer.TierConfig.RankOrder, scheduledAt))
         {
             return Result<(ServicePricing, Customer)>.Fail("Promotion is not valid for this booking.");
+        }
+
+        if (request.PromotionId.HasValue && request.VoucherId.HasValue)
+        {
+            var promotionAllowsVoucher = await _db.Promotions.AnyAsync(promotion =>
+                promotion.PromotionId == request.PromotionId.Value
+                && promotion.IsStackable);
+            if (!promotionAllowsVoucher)
+            {
+                return Result<(ServicePricing, Customer)>.Fail("Voucher cannot be combined with this promotion.");
+            }
         }
 
         if (request.VoucherId.HasValue)
@@ -491,18 +546,70 @@ public class BookingService(
                 && pricing.Service.IsActive);
     }
 
-    private async Task<bool> IsPromotionUsableAsync(Guid promotionId, int customerTierRank, DateTime scheduledAt)
+    private async Task<bool> IsPromotionUsableAsync(Guid promotionId, Guid customerId, int customerTierRank, DateTime scheduledAt)
     {
         var scheduledDate = DateOnly.FromDateTime(scheduledAt);
-        return await _db.Promotions
+        var promotion = await _db.Promotions
             .Include(promotion => promotion.MinTier)
-            .AnyAsync(promotion =>
+            .Include(promotion => promotion.MaxTier)
+            .SingleOrDefaultAsync(promotion =>
                 promotion.PromotionId == promotionId
                 && promotion.IsActive
                 && promotion.StartDate <= scheduledDate
                 && promotion.EndDate >= scheduledDate
                 && promotion.MinTier.RankOrder <= customerTierRank
                 && (promotion.MaxTierId == null || promotion.MaxTier!.RankOrder >= customerTierRank));
+
+        if (promotion is null)
+        {
+            return false;
+        }
+
+        var usageSummary = await _db.Bookings
+            .AsNoTracking()
+            .Where(booking =>
+                booking.PromotionId == promotionId
+                && booking.Status != BookingStatus.Cancelled)
+            .GroupBy(_ => 1)
+            .Select(group => new
+            {
+                TotalUsage = group.Count(),
+                CustomerUsage = group.Count(booking => booking.CustomerId == customerId)
+            })
+            .SingleOrDefaultAsync();
+
+        if (promotion.UsageLimitPerCustomer.HasValue
+            && (usageSummary?.CustomerUsage ?? 0) >= promotion.UsageLimitPerCustomer.Value)
+        {
+            return false;
+        }
+
+        if (promotion.TotalUsageLimit.HasValue
+            && (usageSummary?.TotalUsage ?? 0) >= promotion.TotalUsageLimit.Value)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static decimal CalculateBookingFinalPrice(decimal basePrice, Promotion? promotion, CustomerVoucher? voucher)
+    {
+        var promotionDiscount = CalculatePromotionDiscount(basePrice, promotion);
+        var remainingAfterPromotion = Math.Max(0, basePrice - promotionDiscount);
+        var voucherDiscount = voucher is null ? 0m : Math.Min(voucher.DiscountAmount, remainingAfterPromotion);
+        return Math.Max(0, basePrice - promotionDiscount - voucherDiscount);
+    }
+
+    private static decimal CalculatePromotionDiscount(decimal basePrice, Promotion? promotion)
+    {
+        return promotion?.RewardType switch
+        {
+            RewardType.Discount => Math.Min(promotion.RewardValue, basePrice),
+            RewardType.FreeWash => basePrice,
+            RewardType.BonusPoints => 0m,
+            _ => 0m
+        };
     }
 
     private async Task<bool> IsRangeAvailableAsync(DateTime scheduledAt, DateTime expectedEndAt)
