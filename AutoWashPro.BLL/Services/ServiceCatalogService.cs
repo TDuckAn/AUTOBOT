@@ -57,6 +57,26 @@ public class ServiceCatalogService(
         return Result<PagedResultDto<ServicePricingDto>>.Ok(await query.ToPagedResultAsync(page, pageSize, ToPricingDto));
     }
 
+    public async Task<Result<PagedResultDto<ServicePricingDto>>> GetPricingByServiceForAdminAsync(Guid serviceId, int page, int pageSize)
+    {
+        var serviceExists = await _db.Services
+            .AsNoTracking()
+            .AnyAsync(service => service.ServiceId == serviceId);
+
+        if (!serviceExists)
+        {
+            return Result<PagedResultDto<ServicePricingDto>>.Fail("Service was not found.");
+        }
+
+        var query = _db.ServicePricings
+            .AsNoTracking()
+            .Include(item => item.VehicleType)
+            .Where(item => item.ServiceId == serviceId)
+            .OrderBy(item => item.VehicleType.Name);
+
+        return Result<PagedResultDto<ServicePricingDto>>.Ok(await query.ToPagedResultAsync(page, pageSize, ToPricingDto));
+    }
+
     public async Task<Result<ServiceDto>> CreateServiceAsync(CreateServiceDto request)
     {
         var name = request.Name.Trim();

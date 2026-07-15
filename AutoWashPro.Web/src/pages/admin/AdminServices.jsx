@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useCallback, useEffect, useState } from 'react'
 import { getApiError, unwrapPaged } from '../../api/client.js'
-import { createPricing, createService, listAdminServices, listPricing, updatePricing, updateService } from '../../api/services.js'
+import { createPricing, createService, listAdminPricing, listAdminServices, updatePricing, updateService } from '../../api/services.js'
 import { createVehicleType, deleteVehicleType, listVehicleTypes } from '../../api/vehicleTypes.js'
 import { Icons } from '../../components/icons.jsx'
 import { AdminShell } from '../../components/layout/AdminShell.jsx'
@@ -53,7 +53,7 @@ export function AdminServices() {
   const selectService = async (service) => {
     setSelected(service)
     setForm({ name: service.name, description: service.description ?? '', isActive: service.isActive })
-    const rows = unwrapPaged(await listPricing(service.serviceId))
+    const rows = unwrapPaged(await listAdminPricing(service.serviceId))
     setPricing(rows)
     setPricingDrafts(draftsFromPricing(rows))
   }

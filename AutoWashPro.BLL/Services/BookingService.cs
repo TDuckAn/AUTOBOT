@@ -455,11 +455,14 @@ public class BookingService(
 
         if (request.VoucherId.HasValue)
         {
-            var voucherIsUsable = await _db.CustomerVouchers.AnyAsync(voucher =>
+            var voucherExistsAndUnused = await _db.CustomerVouchers.AnyAsync(voucher =>
                 voucher.VoucherId == request.VoucherId.Value
                 && voucher.CustomerId == customerId
                 && !voucher.IsUsed);
-            if (!voucherIsUsable)
+            var voucherReservedByOtherBooking = await _db.Bookings.AnyAsync(booking =>
+                booking.VoucherId == request.VoucherId.Value
+                && booking.Status != BookingStatus.Cancelled);
+            if (!voucherExistsAndUnused || voucherReservedByOtherBooking)
             {
                 return Result<(ServicePricing, Customer)>.Fail("Voucher is not valid for this booking.");
             }

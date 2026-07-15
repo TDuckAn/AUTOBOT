@@ -277,6 +277,16 @@ public class CheckoutService(
             return null;
         }
 
+        var reservedByOtherBooking = await _db.Bookings.AnyAsync(booking =>
+            booking.VoucherId == voucherId
+            && booking.BookingId != bookingId
+            && booking.Status != BookingStatus.Cancelled);
+
+        if (reservedByOtherBooking)
+        {
+            return null;
+        }
+
         return await _db.CustomerVouchers.SingleOrDefaultAsync(voucher =>
             voucher.VoucherId == voucherId
             && voucher.CustomerId == customerId
