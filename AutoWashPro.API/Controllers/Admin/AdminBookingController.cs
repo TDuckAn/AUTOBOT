@@ -36,6 +36,13 @@ public class AdminBookingController(
         return Ok(result.Value);
     }
 
+    [HttpGet("walk-in/availability")]
+    public async Task<IActionResult> GetWalkInAvailability([FromQuery] AvailabilityRequestDto request)
+    {
+        var result = await _bookingService.GetWalkInAvailabilityAsync(request.Date, request.PricingId);
+        return result.IsSuccess ? Ok(result.Value) : BadRequest(result.Error);
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetBookings(
         [FromQuery] int page = 1,

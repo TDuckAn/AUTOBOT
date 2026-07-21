@@ -12,27 +12,31 @@ import { formatTime, formatVND } from '../../utils/format.js'
 const pieColors = ['var(--tier-dong)', 'var(--tier-bac)', 'var(--tier-vang)', 'var(--tier-platinum)']
 
 export function AdminDashboard() {
+  const now = new Date()
   const [summary, setSummary] = useState(null)
   const [tiers, setTiers] = useState([])
   const [queue, setQueue] = useState([])
   const [error, setError] = useState('')
+  const [year, setYear] = useState(now.getFullYear())
+  const [quarter, setQuarter] = useState(Math.floor(now.getMonth() / 3) + 1)
 
   useEffect(() => {
-    Promise.all([getSummary(), getTierReview(), getQueue({ pageSize: 8 })])
+    Promise.all([getSummary({ revenueYear: year, revenueQuarter: quarter }), getTierReview(), getQueue({ pageSize: 8 })])
       .then(([summaryData, tierData, queueData]) => {
         setSummary(summaryData)
         setTiers(tierData.tierDistribution ?? [])
         setQueue(unwrapPaged(queueData).slice(0, 8))
       })
       .catch((err) => setError(getApiError(err, 'Không tải được tổng quan.')))
-  }, [])
+  }, [quarter, year])
 
   const revenueChart = summary?.revenueHistory ?? []
+  const availableYears = summary?.availableRevenueYears?.length
+    ? summary.availableRevenueYears
+    : [year]
 
   return (
-    <AdminShell active="dashboard" title="Tổng quan" subtitle={`· ${new Date().toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`}
-      headerActions={<button className="aw-btn aw-btn-ghost aw-btn-sm"><Icons.Receipt size={13} /> Xuất báo cáo</button>}
-    >
+    <AdminShell active="dashboard" title="Tổng quan" subtitle={`· ${new Date().toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`}>
       <PageContainer>
         {error && <div style={{ color: 'var(--danger)', marginBottom: 12 }}>{error}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
@@ -44,7 +48,20 @@ export function AdminDashboard() {
 
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14, marginBottom: 20 }}>
           <div className="aw-card" style={{ padding: 18, display: 'flex', flexDirection: 'column', minHeight: 280 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Doanh thu 7 ngày gần nhất</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>Doanh thu quý {quarter}/{year}</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <select className="aw-input" value={quarter} onChange={(e) => setQuarter(Number(e.target.value))} style={{ width: 96, height: 32, fontSize: 12 }}>
+                  <option value={1}>Quý 1</option>
+                  <option value={2}>Quý 2</option>
+                  <option value={3}>Quý 3</option>
+                  <option value={4}>Quý 4</option>
+                </select>
+                <select className="aw-input" value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ width: 96, height: 32, fontSize: 12 }}>
+                  {availableYears.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+              </div>
+            </div>
             {revenueChart.length > 0 ? (
               <div style={{ flex: 1, minHeight: 200 }}>
                 <ResponsiveContainer width="100%" height="100%">

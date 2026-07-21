@@ -99,6 +99,59 @@ public class BookingService(
         return Result<IReadOnlyList<AvailabilitySlotDto>>.Ok(slots);
     }
 
+    public async Task<Result<IReadOnlyList<AvailabilitySlotDto>>> GetWalkInAvailabilityAsync(DateTime date, Guid pricingId)
+    {
+        var bookingDate = DateOnly.FromDateTime(date);
+        var today = GetBusinessToday();
+        if (bookingDate != today)
+        {
+            return Result<IReadOnlyList<AvailabilitySlotDto>>.Fail("Walk-in bookings can only be scheduled for today.");
+        }
+
+        var pricing = await GetActivePricingAsync(pricingId);
+        if (pricing is null)
+        {
+            return Result<IReadOnlyList<AvailabilitySlotDto>>.Fail("Active pricing was not found.");
+        }
+
+        var dayStart = date.Date;
+        var dayEnd = dayStart.AddDays(1);
+        var nowSlot = GetBusinessNow().RoundDownToSlot(_slotDurationMinutes);
+        var slots = new List<AvailabilitySlotDto>();
+
+        await using var tx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        var fetchEnd = dayEnd.AddMinutes(pricing.DurationMinutes);
+        var dayBookings = await _db.Bookings
+            .Where(booking =>
+                booking.Status != BookingStatus.Cancelled
+                && booking.ScheduledAt < fetchEnd
+                && booking.ExpectedEndAt > dayStart)
+            .Select(booking => new BookingInterval(booking.ScheduledAt, booking.ExpectedEndAt))
+            .ToListAsync();
+        await tx.CommitAsync();
+
+        for (var slotStart = dayStart; slotStart < dayEnd; slotStart = slotStart.AddMinutes(_slotDurationMinutes))
+        {
+            var slotEnd = slotStart.AddMinutes(pricing.DurationMinutes);
+            if (!IsCustomerBookableRange(slotStart, slotEnd))
+            {
+                continue;
+            }
+
+            var remaining = Math.Max(0, _maxCapacityPerSlot - MaxConcurrency(dayBookings, slotStart, slotEnd));
+            var isInFuture = slotStart >= nowSlot;
+            slots.Add(new AvailabilitySlotDto
+            {
+                ScheduledAt = slotStart,
+                ExpectedEndAt = slotEnd,
+                RemainingCapacity = remaining,
+                IsAvailable = isInFuture && remaining > 0
+            });
+        }
+
+        return Result<IReadOnlyList<AvailabilitySlotDto>>.Ok(slots);
+    }
+
     public async Task<Result<BookingResponseDto>> CreateBookingAsync(Guid customerId, CreateBookingRequestDto request)
     {
         var scheduledAt = request.ScheduledAt.RoundDownToSlot(_slotDurationMinutes);
@@ -166,7 +219,7 @@ public class BookingService(
             return Result<BookingResponseDto>.Fail("System user was not found.");
         }
 
-        var scheduledAt = GetBusinessNow().RoundDownToSlot(_slotDurationMinutes);
+        var scheduledAt = request.ScheduledAt.RoundDownToSlot(_slotDurationMinutes);
         var expectedEndAt = scheduledAt.AddMinutes(pricing.DurationMinutes);
         var promotion = request.PromotionId.HasValue
             ? await _db.Promotions.AsNoTracking().SingleOrDefaultAsync(entity => entity.PromotionId == request.PromotionId.Value)
@@ -178,6 +231,23 @@ public class BookingService(
         if (string.IsNullOrWhiteSpace(phone) || string.IsNullOrWhiteSpace(licensePlate))
         {
             return Result<BookingResponseDto>.Fail("Walk-in phone and license plate are required.");
+        }
+
+        var today = GetBusinessToday();
+        if (DateOnly.FromDateTime(scheduledAt) != today)
+        {
+            return Result<BookingResponseDto>.Fail("Walk-in bookings can only be scheduled for today.");
+        }
+
+        var nowSlot = GetBusinessNow().RoundDownToSlot(_slotDurationMinutes);
+        if (scheduledAt < nowSlot)
+        {
+            return Result<BookingResponseDto>.Fail("Scheduled time must be in the future.");
+        }
+
+        if (!IsCustomerBookableRange(scheduledAt, expectedEndAt))
+        {
+            return Result<BookingResponseDto>.Fail("Bookings are only available from 08:00 to 17:30 within business hours.");
         }
 
         var matchedCustomer = await _db.Customers

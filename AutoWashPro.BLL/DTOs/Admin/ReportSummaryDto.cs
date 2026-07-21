@@ -7,6 +7,9 @@ public class ReportSummaryDto
     public decimal Revenue { get; set; }
     public int ActiveCustomers { get; set; }
     public decimal SlotUtilisationPercent { get; set; }
+    public int RevenueYear { get; set; }
+    public int RevenueQuarter { get; set; }
+    public IList<int> AvailableRevenueYears { get; set; } = new List<int>();
     public IList<DailyRevenueDto> RevenueHistory { get; set; } = new List<DailyRevenueDto>();
 }
 

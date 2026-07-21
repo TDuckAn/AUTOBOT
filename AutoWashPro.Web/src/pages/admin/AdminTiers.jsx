@@ -22,6 +22,11 @@ export function AdminTiers() {
     setDraft({ ...tier })
   }
 
+  const cancelEdit = () => {
+    setEditingId(null)
+    setDraft(null)
+  }
+
   const save = async () => {
     try {
       await updateTier(editingId, {
@@ -43,7 +48,12 @@ export function AdminTiers() {
 
   return (
     <AdminShell active="tiers" title="Cấu hình hạng thành viên"
-      headerActions={editingId && <button className="aw-btn aw-btn-primary aw-btn-sm" onClick={save}>Lưu</button>}
+      headerActions={editingId && (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="aw-btn aw-btn-ghost aw-btn-sm" onClick={cancelEdit}>Hủy</button>
+          <button className="aw-btn aw-btn-primary aw-btn-sm" onClick={save}>Lưu</button>
+        </div>
+      )}
     >
       <PageContainer>
         {(error || message) && <div style={{ marginBottom: 12, color: error ? 'var(--danger)' : 'var(--green-ink)', fontSize: 13 }}>{error || message}</div>}

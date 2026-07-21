@@ -23,3 +23,8 @@ export async function createWalkInBooking(payload) {
   const { data } = await client.post('/admin/bookings/walk-in', payload)
   return data
 }
+
+export async function getWalkInAvailability(params) {
+  const { data } = await client.get('/admin/bookings/walk-in/availability', { params })
+  return data
+}
