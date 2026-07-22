@@ -128,20 +128,44 @@ public class VoucherService(AppDbContext db) : IVoucherService
 
     public async Task<List<CustomerVoucherDto>> GetCustomerVouchersAsync(Guid customerId)
     {
-        return await _db.CustomerVouchers
+        var reservedVoucherIds = await _db.Bookings
+            .AsNoTracking()
+            .Where(booking =>
+                booking.CustomerId == customerId
+                && booking.VoucherId != null
+                && booking.Status != BookingStatus.Cancelled)
+            .Select(booking => booking.VoucherId!.Value)
+            .Distinct()
+            .ToListAsync();
+
+        var reservedVoucherIdSet = reservedVoucherIds.ToHashSet();
+
+        var vouchers = await _db.CustomerVouchers
             .AsNoTracking()
             .Where(v => v.CustomerId == customerId)
             .OrderByDescending(v => v.RedeemedAt)
+            .Select(v => new
+            {
+                v.VoucherId,
+                RuleName = v.VoucherRule.Name,
+                v.Code,
+                v.DiscountAmount,
+                v.RedeemedAt,
+                v.IsUsed,
+            })
+            .ToListAsync();
+
+        return vouchers
             .Select(v => new CustomerVoucherDto
             {
                 VoucherId = v.VoucherId,
-                RuleName = v.VoucherRule.Name,
+                RuleName = v.RuleName,
                 Code = v.Code,
                 DiscountAmount = v.DiscountAmount,
                 RedeemedAt = v.RedeemedAt,
-                IsUsed = v.IsUsed,
+                IsUsed = v.IsUsed || reservedVoucherIdSet.Contains(v.VoucherId),
             })
-            .ToListAsync();
+            .ToList();
     }
 
     private static VoucherRedemptionRuleDto ToDto(VoucherRedemptionRule r) => new()

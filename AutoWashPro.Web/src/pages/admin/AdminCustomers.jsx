@@ -55,9 +55,7 @@ export function AdminCustomers() {
   }
 
   return (
-    <AdminShell active="customers" title="Khách hàng" subtitle={`· ${customers.length} thành viên`}
-      headerActions={<button className="aw-btn aw-btn-ghost aw-btn-sm"><Icons.Receipt size={13} /> CSV</button>}
-    >
+    <AdminShell active="customers" title="Khách hàng" subtitle={`· ${customers.length} thành viên`}>
       <div style={{ display: 'flex', height: '100%' }}>
         <div style={{ flex: 1, padding: 24, minWidth: 0 }}>
           {(error || message) && <div style={{ marginBottom: 12, color: error ? 'var(--danger)' : 'var(--green-ink)', fontSize: 13 }}>{error || message}</div>}

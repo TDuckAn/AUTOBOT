@@ -9,6 +9,7 @@ public interface IServiceCatalogService
     Task<Result<PagedResultDto<ServiceDto>>> ListActiveServicesAsync(int page, int pageSize);
     Task<Result<PagedResultDto<ServiceDto>>> ListAllServicesAsync(int page, int pageSize);
     Task<Result<PagedResultDto<ServicePricingDto>>> GetPricingByServiceAsync(Guid serviceId, int page, int pageSize);
+    Task<Result<PagedResultDto<ServicePricingDto>>> GetPricingByServiceForAdminAsync(Guid serviceId, int page, int pageSize);
     Task<Result<ServiceDto>> CreateServiceAsync(CreateServiceDto request);
     Task<Result<ServiceDto>> UpdateServiceAsync(Guid serviceId, CreateServiceDto request);
     Task<Result<ServicePricingDto>> AddPricingAsync(Guid serviceId, CreatePricingDto request);

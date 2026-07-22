@@ -7,6 +7,9 @@ public class CreateWalkInBookingRequestDto
     [Required]
     public Guid PricingId { get; set; }
 
+    [Required]
+    public DateTime ScheduledAt { get; set; }
+
     public Guid? PromotionId { get; set; }
 
     [Required]

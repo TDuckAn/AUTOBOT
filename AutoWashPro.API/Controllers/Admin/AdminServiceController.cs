@@ -25,6 +25,13 @@ public class AdminServiceController(
         return result.IsSuccess ? Ok(result.Value) : BadRequest(result.Error);
     }
 
+    [HttpGet("{id:guid}/pricing")]
+    public async Task<IActionResult> GetPricing(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 100)
+    {
+        var result = await _serviceCatalogService.GetPricingByServiceForAdminAsync(id, page, pageSize);
+        return result.IsSuccess ? Ok(result.Value) : NotFound(result.Error);
+    }
+
     [HttpPost]
     public async Task<IActionResult> CreateService(CreateServiceDto request)
     {

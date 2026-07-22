@@ -34,6 +34,86 @@ public class PromotionService(
         return Result<PagedResultDto<PromotionDto>>.Ok(await ordered.ToPagedResultAsync(page, pageSize, ToDto));
     }
 
+    public async Task<Result<PagedResultDto<PromotionDto>>> GetAvailablePromotionsAsync(Guid customerId, int page, int pageSize)
+    {
+        var customer = await _db.Customers
+            .AsNoTracking()
+            .Include(entity => entity.TierConfig)
+            .SingleOrDefaultAsync(entity => entity.CustomerId == customerId);
+
+        if (customer is null)
+        {
+            return Result<PagedResultDto<PromotionDto>>.Fail("Customer was not found.");
+        }
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var baseQuery = _db.Promotions
+            .AsNoTracking()
+            .Include(promotion => promotion.MinTier)
+            .Include(promotion => promotion.MaxTier)
+            .Where(promotion =>
+                promotion.IsActive
+                && promotion.StartDate <= today
+                && promotion.EndDate >= today
+                && promotion.MinTier.RankOrder <= customer.TierConfig.RankOrder
+                && (promotion.MaxTierId == null || promotion.MaxTier!.RankOrder >= customer.TierConfig.RankOrder));
+
+        var usageStats = await _db.Bookings
+            .AsNoTracking()
+            .Where(booking =>
+                booking.PromotionId != null
+                && booking.Status != BookingStatus.Cancelled)
+            .GroupBy(booking => booking.PromotionId!.Value)
+            .Select(group => new
+            {
+                PromotionId = group.Key,
+                TotalUsage = group.Count(),
+                CustomerUsage = group.Count(booking => booking.CustomerId == customerId)
+            })
+            .ToDictionaryAsync(item => item.PromotionId);
+
+        var promotions = await baseQuery
+            .OrderByDescending(promotion => promotion.CreatedAt)
+            .ToListAsync();
+
+        var filtered = promotions
+            .Where(promotion =>
+            {
+                if (!usageStats.TryGetValue(promotion.PromotionId, out var usage))
+                {
+                    return true;
+                }
+
+                if (promotion.UsageLimitPerCustomer.HasValue && usage.CustomerUsage >= promotion.UsageLimitPerCustomer.Value)
+                {
+                    return false;
+                }
+
+                if (promotion.TotalUsageLimit.HasValue && usage.TotalUsage >= promotion.TotalUsageLimit.Value)
+                {
+                    return false;
+                }
+
+                return true;
+            })
+            .ToList();
+
+        var totalCount = filtered.Count;
+        var items = filtered
+            .Skip(Math.Max(0, (page - 1) * pageSize))
+            .Take(pageSize)
+            .Select(ToDto)
+            .ToList();
+
+        return Result<PagedResultDto<PromotionDto>>.Ok(new PagedResultDto<PromotionDto>
+        {
+            Items = items,
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = totalCount
+        });
+    }
+
     public async Task<Result<PromotionDto>> GetPromotionAsync(Guid promotionId)
     {
         var promotion = await _db.Promotions
@@ -179,6 +259,42 @@ public class PromotionService(
         if (promotion.MinTier.RankOrder > customer.TierConfig.RankOrder)
         {
             return Result<bool>.Fail("Customer tier is not eligible for this promotion.");
+        }
+
+        if (promotion.MaxTierId.HasValue)
+        {
+            var maxTier = await _db.TierConfigs
+                .AsNoTracking()
+                .SingleOrDefaultAsync(tier => tier.TierId == promotion.MaxTierId.Value);
+            if (maxTier is not null && maxTier.RankOrder < customer.TierConfig.RankOrder)
+            {
+                return Result<bool>.Fail("Customer tier is not eligible for this promotion.");
+            }
+        }
+
+        var usageSummary = await _db.Bookings
+            .AsNoTracking()
+            .Where(booking =>
+                booking.PromotionId == promotionId
+                && booking.Status != BookingStatus.Cancelled)
+            .GroupBy(_ => 1)
+            .Select(group => new
+            {
+                TotalUsage = group.Count(),
+                CustomerUsage = group.Count(booking => booking.CustomerId == customerId)
+            })
+            .SingleOrDefaultAsync();
+
+        if (promotion.UsageLimitPerCustomer.HasValue
+            && (usageSummary?.CustomerUsage ?? 0) >= promotion.UsageLimitPerCustomer.Value)
+        {
+            return Result<bool>.Fail("You have reached the usage limit for this promotion.");
+        }
+
+        if (promotion.TotalUsageLimit.HasValue
+            && (usageSummary?.TotalUsage ?? 0) >= promotion.TotalUsageLimit.Value)
+        {
+            return Result<bool>.Fail("This promotion has reached its total redemption limit.");
         }
 
         return Result<bool>.Ok(true);

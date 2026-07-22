@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { cancelBooking, createBooking, getAvailability, getLoyalty, getMyBookings, getVehicles } from '../../api/customer.js'
 import { getApiError, unwrapPaged } from '../../api/client.js'
+import { listMyPromotions } from '../../api/promotions.js'
 import { listPricing, listServices } from '../../api/services.js'
 import { listMyVouchers } from '../../api/vouchers.js'
 import { StatusPill } from '../../components/badges.jsx'
@@ -25,6 +26,8 @@ export function CustomerBookings() {
   const [scheduledAt, setScheduledAt] = useState('')
   const [vehicleId, setVehicleId] = useState('')
   const [vehicles, setVehicles] = useState([])
+  const [promotions, setPromotions] = useState([])
+  const [promotionId, setPromotionId] = useState('')
   const [vouchers, setVouchers] = useState([])
   const [voucherId, setVoucherId] = useState('')
   const [bookingWindowDays, setBookingWindowDays] = useState(0)
@@ -42,6 +45,22 @@ export function CustomerBookings() {
       setError(getApiError(err, 'Không tải được lịch đặt.'))
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadPromotions = async () => {
+    try {
+      const data = await listMyPromotions({ pageSize: 100 })
+      setPromotions(unwrapPaged(data))
+    } catch {
+    }
+  }
+
+  const loadVouchers = async () => {
+    try {
+      const data = await listMyVouchers()
+      setVouchers((Array.isArray(data) ? data : unwrapPaged(data)).filter((voucher) => !voucher.isUsed))
+    } catch {
     }
   }
 
@@ -73,10 +92,8 @@ export function CustomerBookings() {
         })
         .catch(() => {})
 
-      // Load customer's unused vouchers
-      listMyVouchers()
-        .then((d) => setVouchers((Array.isArray(d) ? d : unwrapPaged(d)).filter((v) => !v.isUsed)))
-        .catch(() => {})
+      loadVouchers()
+      loadPromotions()
 
       getLoyalty()
         .then((data) => setBookingWindowDays(Math.max(0, Number(data?.bookingWindowDays ?? 0))))
@@ -149,10 +166,18 @@ export function CustomerBookings() {
 
   const selectedPricing = pricingOptions.find((option) => option.pricing.pricingId === pricingId)
   const selectedServiceHighlights = extractServiceHighlightsForDisplay(selectedPricing?.service?.description)
+  const selectedPromotion = promotions.find((promotion) => promotion.promotionId === promotionId) ?? null
   const selectedVoucher = vouchers.find((v) => v.voucherId === voucherId)
   const basePrice = selectedPricing?.pricing.price ?? 0
-  const voucherDiscount = selectedVoucher ? Math.min(selectedVoucher.discountAmount, basePrice) : 0
-  const estimatedTotal = Math.max(0, basePrice - voucherDiscount)
+  const promoDiscount = calculatePromotionDiscount(selectedPromotion, basePrice)
+  const voucherDiscount = selectedVoucher ? Math.min(selectedVoucher.discountAmount, Math.max(0, basePrice - promoDiscount)) : 0
+  const estimatedTotal = Math.max(0, basePrice - promoDiscount - voucherDiscount)
+
+  useEffect(() => {
+    if (selectedPromotion && !selectedPromotion.isStackable && voucherId) {
+      setVoucherId('')
+    }
+  }, [selectedPromotion, voucherId])
 
   const handleDateChange = (value) => {
     if (!value) {
@@ -201,10 +226,18 @@ export function CustomerBookings() {
     setMessage('')
     setSubmitting(true)
     try {
-      await createBooking({ vehicleId, pricingId, voucherId: voucherId || undefined, scheduledAt })
+      await createBooking({
+        vehicleId,
+        pricingId,
+        promotionId: promotionId || undefined,
+        voucherId: voucherId || undefined,
+        scheduledAt,
+      })
       setMessage('Đặt lịch thành công!')
+      setPromotionId('')
+      setVoucherId('')
       setView('list')
-      await loadBookings()
+      await Promise.all([loadBookings(), loadPromotions(), loadVouchers()])
     } catch (err) {
       setError(getApiError(err, 'Không thể đặt lịch.'))
     } finally {
@@ -218,8 +251,8 @@ export function CustomerBookings() {
     setCancelSubmitting(true)
     try {
       await cancelBooking(id)
+      await Promise.all([loadBookings(), loadPromotions(), loadVouchers()])
       setMessage('Đã huỷ lịch.')
-      setBookings((prev) => prev.map((booking) => (booking.bookingId === id ? { ...booking, status: 'Cancelled' } : booking)))
       setCancelTarget(null)
     } catch (err) {
       setError(getApiError(err, 'Không thể huỷ lịch.'))
@@ -232,6 +265,7 @@ export function CustomerBookings() {
     <CustomerShell
       active="bookings"
       title={view === 'new' ? 'Đặt lịch mới' : 'Lịch đặt'}
+      contentStyle={view === 'new' ? { overflow: 'hidden' } : undefined}
       headerActions={
         view === 'list'
           ? <button className="aw-btn aw-btn-primary aw-btn-sm" onClick={() => { setView('new'); setError(''); setMessage('') }}><Icons.Plus size={13} sw={2.5} /> Đặt lịch mới</button>
@@ -289,8 +323,9 @@ export function CustomerBookings() {
           />
         </PageContainer>
       ) : (
-        <form onSubmit={submitNew} style={{ display: 'flex', height: '100%' }}>
-          <div className="aw-scroll" style={{ flex: 1, padding: 'clamp(20px, 2vw, 34px)' }}>
+        <div style={{ height: '100%', overflow: 'hidden' }}>
+          <form onSubmit={submitNew} style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+          <div className="aw-scroll" style={{ flex: 1, minHeight: 0, height: '100%', overflowY: 'auto', padding: 'clamp(20px, 2vw, 34px)' }}>
             {error && (
               <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--danger)', padding: '9px 12px', borderRadius: 6, background: 'var(--danger-soft)', border: '1px solid oklch(56% 0.20 25 / 18%)' }}>
                 {error}
@@ -307,7 +342,7 @@ export function CustomerBookings() {
                 {vehicles.map((vehicle) => {
                   const checked = vehicleId === vehicle.vehicleId
                   return (
-                    <label key={vehicle.vehicleId} className="aw-card" style={{ padding: '12px 14px', cursor: 'pointer', borderColor: checked ? 'var(--primary)' : 'var(--border)', background: checked ? 'var(--primary-soft)' : 'var(--surface)' }}>
+                    <label key={vehicle.vehicleId} className="aw-card" style={{ position: 'relative', padding: '12px 14px', cursor: 'pointer', borderColor: checked ? 'var(--primary)' : 'var(--border)', background: checked ? 'var(--primary-soft)' : 'var(--surface)' }}>
                       <input type="radio" name="vehicle" checked={checked} onChange={() => setVehicleId(vehicle.vehicleId)} style={{ position: 'absolute', opacity: 0 }} />
                       <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Geist Mono',monospace" }}>{vehicle.licensePlate}</div>
                       <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 3 }}>{vehicle.vehicleTypeName}{vehicle.brand ? ` · ${vehicle.brand}` : ''}</div>
@@ -332,6 +367,7 @@ export function CustomerBookings() {
                       key={pricing.pricingId}
                       className="aw-card"
                       style={{
+                        position: 'relative',
                         padding: '14px 15px',
                         cursor: 'pointer',
                         borderColor: checked ? 'var(--primary)' : 'var(--border)',
@@ -465,19 +501,57 @@ export function CustomerBookings() {
               </div>
             </div>
 
+            <SectionHeader n="4" title="Khuyến mãi" sub="Chọn ưu đãi phù hợp với hạng thành viên" />
+            {promotions.length === 0 ? (
+              <div className="aw-card" style={{ padding: 16, marginBottom: 20, color: 'var(--ink-500)', fontSize: 13 }}>
+                Chưa có khuyến mãi phù hợp với hạng của bạn ở thời điểm này.
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px,1fr))', gap: 10, marginBottom: 20 }}>
+                <label className="aw-card" style={{ position: 'relative', padding: '12px 14px', cursor: 'pointer', borderColor: !promotionId ? 'var(--primary)' : 'var(--border)', background: !promotionId ? 'var(--primary-soft)' : 'var(--surface)' }}>
+                  <input type="radio" name="promotion" checked={!promotionId} onChange={() => setPromotionId('')} style={{ position: 'absolute', opacity: 0 }} />
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>Không dùng khuyến mãi</div>
+                </label>
+                {promotions.map((promotion) => {
+                  const checked = promotionId === promotion.promotionId
+                  return (
+                    <label key={promotion.promotionId} className="aw-card" style={{ position: 'relative', padding: '12px 14px', cursor: 'pointer', borderColor: checked ? 'var(--primary)' : 'var(--border)', background: checked ? 'var(--primary-soft)' : 'var(--surface)' }}>
+                      <input type="radio" name="promotion" checked={checked} onChange={() => setPromotionId(promotion.promotionId)} style={{ position: 'absolute', opacity: 0 }} />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700 }}>{promotion.name}</div>
+                          <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 2 }}>{promotion.minTierName}{promotion.maxTierName ? ` - ${promotion.maxTierName}` : ''}</div>
+                        </div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary-ink)', fontFamily: "'Geist Mono',monospace", flexShrink: 0 }}>
+                          {formatPromotionReward(promotion)}
+                        </div>
+                      </div>
+                      {promotion.description && <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 6, lineHeight: 1.45 }}>{promotion.description}</div>}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, fontSize: 10, color: 'var(--ink-500)' }}>
+                        <MetaChip icon={<Icons.Tag size={11} />} label={promotion.rewardType} />
+                        <MetaChip icon={<Icons.Calendar size={11} />} label={`${promotion.startDate} → ${promotion.endDate}`} />
+                        {promotion.isStackable && <MetaChip icon={<Icons.Check size={11} />} label="Stackable" />}
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+
             {vouchers.length > 0 && (
               <>
-                <SectionHeader n="4" title="Voucher" sub="Áp dụng voucher (tuỳ chọn)" />
+                <SectionHeader n="5" title="Voucher" sub={selectedPromotion && !selectedPromotion.isStackable ? 'Khuyến mãi này không cho phép dùng kèm voucher' : 'Áp dụng voucher (tuỳ chọn)'} />
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px,1fr))', gap: 10, marginBottom: 20 }}>
-                  <label className="aw-card" style={{ padding: '12px 14px', cursor: 'pointer', borderColor: !voucherId ? 'var(--primary)' : 'var(--border)', background: !voucherId ? 'var(--primary-soft)' : 'var(--surface)' }}>
+                  <label className="aw-card" style={{ position: 'relative', padding: '12px 14px', cursor: 'pointer', borderColor: !voucherId ? 'var(--primary)' : 'var(--border)', background: !voucherId ? 'var(--primary-soft)' : 'var(--surface)' }}>
                     <input type="radio" name="voucher" checked={!voucherId} onChange={() => setVoucherId('')} style={{ position: 'absolute', opacity: 0 }} />
                     <div style={{ fontSize: 13, fontWeight: 700 }}>Không dùng voucher</div>
                   </label>
                   {vouchers.map((v) => {
                     const checked = voucherId === v.voucherId
+                    const disabled = !!selectedPromotion && !selectedPromotion.isStackable
                     return (
-                      <label key={v.voucherId} className="aw-card" style={{ padding: '12px 14px', cursor: 'pointer', borderColor: checked ? 'var(--primary)' : 'var(--border)', background: checked ? 'var(--primary-soft)' : 'var(--surface)' }}>
-                        <input type="radio" name="voucher" checked={checked} onChange={() => setVoucherId(v.voucherId)} style={{ position: 'absolute', opacity: 0 }} />
+                      <label key={v.voucherId} className="aw-card" style={{ position: 'relative', padding: '12px 14px', cursor: disabled ? 'not-allowed' : 'pointer', borderColor: checked ? 'var(--primary)' : 'var(--border)', background: checked ? 'var(--primary-soft)' : 'var(--surface)', opacity: disabled ? 0.6 : 1 }}>
+                        <input type="radio" name="voucher" checked={checked} disabled={disabled} onChange={() => setVoucherId(v.voucherId)} style={{ position: 'absolute', opacity: 0 }} />
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <div>
                             <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Geist Mono',monospace" }}>{v.code}</div>
@@ -493,7 +567,7 @@ export function CustomerBookings() {
             )}
           </div>
 
-          <aside style={{ width: 'clamp(320px, 24vw, 440px)', flexShrink: 0, background: 'var(--surface)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
+          <aside style={{ width: 'clamp(320px, 24vw, 440px)', flexShrink: 0, height: '100%', background: 'var(--surface)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
               <div style={{ fontSize: 13, fontWeight: 700 }}>Hoá đơn xác nhận</div>
             </div>
@@ -556,6 +630,12 @@ export function CustomerBookings() {
               )}
             </div>
             <div style={{ padding: '14px 18px', borderTop: '1px solid var(--border)' }}>
+              {selectedPromotion && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4, color: 'var(--primary-ink)' }}>
+                  <span>Khuyến mãi {selectedPromotion.name}</span>
+                  <span style={{ fontFamily: "'Geist Mono',monospace" }}>−{formatVND(promoDiscount)}</span>
+                </div>
+              )}
               {selectedVoucher && (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
@@ -583,10 +663,35 @@ export function CustomerBookings() {
               </button>
             </div>
           </aside>
-        </form>
+          </form>
+        </div>
       )}
     </CustomerShell>
   )
+}
+
+function calculatePromotionDiscount(promotion, basePrice) {
+  if (!promotion) {
+    return 0
+  }
+
+  if (promotion.rewardType === 'Discount') {
+    return Math.min(Number(promotion.rewardValue ?? 0), basePrice)
+  }
+
+  if (promotion.rewardType === 'FreeWash') {
+    return basePrice
+  }
+
+  return 0
+}
+
+function formatPromotionReward(promotion) {
+  if (promotion.rewardType === 'Discount' || promotion.rewardType === 'FreeWash') {
+    return promotion.rewardType === 'FreeWash' ? 'Miễn phí' : formatVND(promotion.rewardValue)
+  }
+
+  return `${Number(promotion.rewardValue).toLocaleString('vi-VN')} điểm`
 }
 
 function SectionHeader({ n, title, sub }) {

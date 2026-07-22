@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { clearToken, getDisplayName } from '../../hooks/useAuth.js'
 import { Icons } from '../icons.jsx'
@@ -5,13 +6,35 @@ import { Icons } from '../icons.jsx'
 const NAV = [
   { id: 'dashboard', icon: 'Dashboard', label: 'Tổng quan', path: '/customer/dashboard' },
   { id: 'bookings', icon: 'Calendar', label: 'Đặt lịch & Lịch sử', path: '/customer/bookings' },
+  { id: 'promotions', icon: 'Tag', label: 'Khuyến mãi của tôi', path: '/customer/promotions' },
   { id: 'vehicles', icon: 'Bike', label: 'Xe của tôi', path: '/customer/vehicles' },
   { id: 'rewards', icon: 'Gift', label: 'Điểm & Ưu đãi', path: '/customer/rewards' },
 ]
 
-export function CustomerShell({ active, title, children, headerActions }) {
+export function CustomerShell({ active, title, children, headerActions, contentStyle }) {
   const navigate = useNavigate()
   const displayName = getDisplayName()
+
+  useEffect(() => {
+    const html = document.documentElement
+    const body = document.body
+    const previousHtmlOverflow = html.style.overflow
+    const previousBodyOverflow = body.style.overflow
+    const previousHtmlHeight = html.style.height
+    const previousBodyHeight = body.style.height
+
+    html.style.overflow = 'hidden'
+    body.style.overflow = 'hidden'
+    html.style.height = '100%'
+    body.style.height = '100%'
+
+    return () => {
+      html.style.overflow = previousHtmlOverflow
+      body.style.overflow = previousBodyOverflow
+      html.style.height = previousHtmlHeight
+      body.style.height = previousBodyHeight
+    }
+  }, [])
 
   const logout = () => {
     clearToken()
@@ -19,7 +42,7 @@ export function CustomerShell({ active, title, children, headerActions }) {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', fontFamily: 'inherit' }}>
+    <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden', fontFamily: 'inherit' }}>
       <aside style={{
         width: 220, flexShrink: 0, background: 'var(--sidebar-bg)',
         borderRight: '1px solid var(--sidebar-border)',
@@ -74,7 +97,7 @@ export function CustomerShell({ active, title, children, headerActions }) {
         </div>
       </aside>
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: 'var(--bg)' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: 'var(--bg)', minHeight: 0 }}>
         <header style={{
           height: 52, flexShrink: 0, padding: '0 24px', background: 'var(--surface)',
           borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 14,
@@ -84,7 +107,7 @@ export function CustomerShell({ active, title, children, headerActions }) {
           </div>
           {headerActions}
         </header>
-        <div style={{ flex: 1, overflow: 'auto' }}>{children}</div>
+        <div style={{ flex: 1, minHeight: 0, overflow: 'auto', ...contentStyle }}>{children}</div>
       </div>
     </div>
   )

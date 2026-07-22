@@ -15,7 +15,16 @@ export async function completeBooking(id, pointsToRedeem = 0) {
   return data
 }
 
+export async function cancelBookingByStaff(id) {
+  await client.post(`/admin/bookings/${id}/cancel`)
+}
+
 export async function createWalkInBooking(payload) {
   const { data } = await client.post('/admin/bookings/walk-in', payload)
+  return data
+}
+
+export async function getWalkInAvailability(params) {
+  const { data } = await client.get('/admin/bookings/walk-in/availability', { params })
   return data
 }

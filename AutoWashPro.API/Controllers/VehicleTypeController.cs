@@ -40,16 +40,33 @@ public class VehicleTypeController(AppDbContext db, CatalogCache catalogCache) :
     [Authorize(Policy = "AdminOnly")]
     public async Task<IActionResult> Create(CreateVehicleTypeDto request)
     {
-        var exists = await _db.VehicleTypes.AnyAsync(vt => vt.Name == request.Name.Trim());
-        if (exists)
+        var name = request.Name.Trim();
+        var existing = await _db.VehicleTypes
+            .SingleOrDefaultAsync(vt => vt.Name == name);
+
+        if (existing is not null && existing.IsActive)
         {
             return BadRequest("Loại xe này đã tồn tại.");
+        }
+
+        if (existing is not null)
+        {
+            existing.IsActive = true;
+            await _db.SaveChangesAsync();
+            _catalogCache.Invalidate();
+
+            return Ok(new VehicleTypeDto
+            {
+                VehicleTypeId = existing.VehicleTypeId,
+                Name = existing.Name,
+                IsActive = existing.IsActive,
+            });
         }
 
         var vt = new VehicleType
         {
             VehicleTypeId = Guid.NewGuid(),
-            Name = request.Name.Trim(),
+            Name = name,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
         };
@@ -58,7 +75,12 @@ public class VehicleTypeController(AppDbContext db, CatalogCache catalogCache) :
         await _db.SaveChangesAsync();
         _catalogCache.Invalidate();
 
-        return Ok(new VehicleTypeDto { VehicleTypeId = vt.VehicleTypeId, Name = vt.Name, IsActive = vt.IsActive });
+        return Ok(new VehicleTypeDto
+        {
+            VehicleTypeId = vt.VehicleTypeId,
+            Name = vt.Name,
+            IsActive = vt.IsActive,
+        });
     }
 
     [HttpDelete("{id:guid}")]
@@ -71,15 +93,26 @@ public class VehicleTypeController(AppDbContext db, CatalogCache catalogCache) :
             return NotFound();
         }
 
-        // A vehicle type referenced by vehicles or pricing cannot be deleted (FK constraint).
-        var inUse = await _db.Vehicles.AnyAsync(v => v.VehicleTypeId == id)
-            || await _db.ServicePricings.AnyAsync(p => p.VehicleTypeId == id);
-        if (inUse)
+        var usedByVehicle = await _db.Vehicles.AnyAsync(v => v.VehicleTypeId == id);
+        if (usedByVehicle)
         {
-            return BadRequest("Không thể xoá loại xe đang được sử dụng bởi xe hoặc bảng giá.");
+            return BadRequest("Không thể xóa loại xe đang được sử dụng bởi khách hàng.");
         }
 
-        _db.VehicleTypes.Remove(vt);
+        var usedByActivePricing = await _db.ServicePricings
+            .Include(pricing => pricing.Service)
+            .AnyAsync(pricing =>
+                pricing.VehicleTypeId == id
+                && pricing.IsActive
+                && pricing.Service.IsActive);
+
+        if (usedByActivePricing)
+        {
+            return BadRequest("Không thể xóa loại xe đang được sử dụng bởi bảng giá còn hoạt động.");
+        }
+
+        // Keep historical FK references intact while hiding the type from selection lists.
+        vt.IsActive = false;
         await _db.SaveChangesAsync();
         _catalogCache.Invalidate();
 

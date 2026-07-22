@@ -192,8 +192,11 @@ export function AdminPromotions() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <Field label="Hạng tối thiểu"><select className="aw-input" value={form.minTierId} onChange={(e) => setForm({ ...form, minTierId: e.target.value })}>{tiers.map((tier) => <option key={tier.tierId} value={tier.tierId}>{tier.tierName}</option>)}</select></Field>
               <Field label="Hạng tối đa (tuỳ chọn)"><select className="aw-input" value={form.maxTierId} onChange={(e) => setForm({ ...form, maxTierId: e.target.value })}><option value="">Không giới hạn</option>{tiers.map((tier) => <option key={tier.tierId} value={tier.tierId}>{tier.tierName}</option>)}</select></Field>
-              <Field label="Giới hạn/khách (trống = ∞)"><input className="aw-input" type="number" min={1} value={form.usageLimitPerCustomer} onChange={(e) => setForm({ ...form, usageLimitPerCustomer: e.target.value })} /></Field>
-              <Field label="Tổng lượt (trống = ∞)"><input className="aw-input" type="number" min={1} value={form.totalUsageLimit} onChange={(e) => setForm({ ...form, totalUsageLimit: e.target.value })} /></Field>
+              <Field label="Giới hạn mỗi khách (để 1 = mỗi khách dùng 1 lần)"><input className="aw-input" type="number" min={1} value={form.usageLimitPerCustomer} onChange={(e) => setForm({ ...form, usageLimitPerCustomer: e.target.value })} /></Field>
+              <Field label="Tổng lượt toàn hệ thống (để trống = không giới hạn)"><input className="aw-input" type="number" min={1} value={form.totalUsageLimit} onChange={(e) => setForm({ ...form, totalUsageLimit: e.target.value })} /></Field>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--ink-500)', lineHeight: 1.5 }}>
+              Nếu muốn khuyến mãi "mỗi khách chỉ dùng 1 lần" thì đặt <b>Giới hạn mỗi khách = 1</b> và để trống <b>Tổng lượt toàn hệ thống</b>.
             </div>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}><input type="checkbox" checked={form.isStackable} onChange={(e) => setForm({ ...form, isStackable: e.target.checked })} /> Cho phép dùng kèm voucher (stackable)</label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}><input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} /> Đang hoạt động</label>
@@ -206,7 +209,7 @@ export function AdminPromotions() {
         {tab === 'voucher-rules' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(380px, 440px)', gap: 16 }}>
             <div>
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Quy tắc đổi điểm lấy voucher</div>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Danh sách Voucher</div>
               {ruleError && <div style={{ marginBottom: 12, color: 'var(--danger)', fontSize: 13 }}>{ruleError}</div>}
               <div className="aw-card" style={{ overflow: 'hidden' }}>
                 <table className="aw-table">
@@ -245,7 +248,7 @@ export function AdminPromotions() {
 
             <form className="aw-card" onSubmit={saveRule} style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: 15, fontWeight: 800 }}>{editingRule ? 'Chỉnh sửa' : 'Tạo quy tắc mới'}</div>
+                <div style={{ fontSize: 15, fontWeight: 800 }}>{editingRule ? 'Chỉnh sửa' : 'Tạo Voucher mới'}</div>
                 {editingRule && (
                   <button type="button" className="aw-btn aw-btn-ghost aw-btn-sm"
                     onClick={() => { setEditingRule(null); setRuleForm(blankRule) }}>Huỷ</button>
@@ -269,7 +272,7 @@ export function AdminPromotions() {
                 <input type="checkbox" checked={ruleForm.isActive} onChange={(e) => setRuleForm({ ...ruleForm, isActive: e.target.checked })} /> Đang hoạt động
               </label>
               <button className="aw-btn aw-btn-primary" style={{ alignSelf: 'flex-start' }} disabled={ruleSaving}>
-                {ruleSaving ? 'Đang lưu…' : <><Icons.Check size={13} /> {editingRule ? 'Cập nhật' : 'Tạo quy tắc'}</>}
+                {ruleSaving ? 'Đang lưu…' : <><Icons.Check size={13} /> {editingRule ? 'Cập nhật' : 'Tạo Voucher'}</>}
               </button>
             </form>
           </div>

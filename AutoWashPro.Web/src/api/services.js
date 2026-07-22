@@ -15,6 +15,11 @@ export async function listPricing(serviceId, params = {}) {
   return data
 }
 
+export async function listAdminPricing(serviceId, params = {}) {
+  const { data } = await client.get(`/admin/services/${serviceId}/pricing`, { params: { page: 1, pageSize: 100, ...params } })
+  return data
+}
+
 export async function createService(payload) {
   const { data } = await client.post('/admin/services', payload)
   return data

@@ -36,6 +36,13 @@ public class AdminBookingController(
         return Ok(result.Value);
     }
 
+    [HttpGet("walk-in/availability")]
+    public async Task<IActionResult> GetWalkInAvailability([FromQuery] AvailabilityRequestDto request)
+    {
+        var result = await _bookingService.GetWalkInAvailabilityAsync(request.Date, request.PricingId);
+        return result.IsSuccess ? Ok(result.Value) : BadRequest(result.Error);
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetBookings(
         [FromQuery] int page = 1,
@@ -56,6 +63,25 @@ public class AdminBookingController(
     {
         var result = await _bookingService.GetDailyQueueAsync(date ?? DateOnly.FromDateTime(DateTime.UtcNow), page, pageSize);
         return result.IsSuccess ? Ok(result.Value) : BadRequest(result.Error);
+    }
+
+    [HttpPost("{id:guid}/cancel")]
+    public async Task<IActionResult> CancelBooking(Guid id)
+    {
+        var systemUserId = GetPrincipalId();
+        if (systemUserId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _bookingService.CancelBookingByStaffAsync(systemUserId.Value, id);
+        if (!result.IsSuccess)
+        {
+            return BadRequest(result.Error);
+        }
+
+        _logger.LogInformation("System user {SystemUserId} cancelled booking {BookingId}.", systemUserId, id);
+        return NoContent();
     }
 
     private Guid? GetPrincipalId()

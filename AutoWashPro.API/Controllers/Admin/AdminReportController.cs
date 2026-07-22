@@ -20,11 +20,21 @@ public class AdminReportController(
     private readonly ILogger<AdminReportController> _logger = logger;
 
     [HttpGet("summary")]
-    public async Task<IActionResult> GetSummary([FromQuery] DateOnly? date = null)
+    public async Task<IActionResult> GetSummary(
+        [FromQuery] DateOnly? date = null,
+        [FromQuery] int? revenueYear = null,
+        [FromQuery] int? revenueQuarter = null)
     {
         var reportDate = date ?? DateOnly.FromDateTime(DateTime.UtcNow);
         var dayStart = reportDate.ToDateTime(TimeOnly.MinValue);
         var dayEnd = dayStart.AddDays(1);
+        var selectedRevenueYear = revenueYear ?? reportDate.Year;
+        var selectedRevenueQuarter = revenueQuarter ?? ((reportDate.Month - 1) / 3 + 1);
+
+        if (selectedRevenueQuarter is < 1 or > 4)
+        {
+            return BadRequest("Revenue quarter must be between 1 and 4.");
+        }
 
         var completedBookings = _db.Bookings
             .AsNoTracking()
@@ -42,7 +52,8 @@ public class AdminReportController(
             .CountAsync();
 
         var utilisation = await CalculateSlotUtilisationAsync(dayStart, dayEnd);
-        var revenueHistory = await BuildRevenueHistoryAsync(reportDate, 7);
+        var revenueHistory = await BuildQuarterRevenueHistoryAsync(selectedRevenueYear, selectedRevenueQuarter);
+        var availableRevenueYears = await GetAvailableRevenueYearsAsync(reportDate.Year);
 
         _logger.LogDebug("Generated summary report for {ReportDate}.", reportDate);
         return Ok(new ReportSummaryDto
@@ -52,6 +63,9 @@ public class AdminReportController(
             Revenue = revenue,
             ActiveCustomers = activeCustomers,
             SlotUtilisationPercent = utilisation,
+            RevenueYear = selectedRevenueYear,
+            RevenueQuarter = selectedRevenueQuarter,
+            AvailableRevenueYears = availableRevenueYears,
             RevenueHistory = revenueHistory,
         });
     }
@@ -79,21 +93,40 @@ public class AdminReportController(
         });
     }
 
-    private async Task<IList<DailyRevenueDto>> BuildRevenueHistoryAsync(DateOnly toDate, int days)
+    private async Task<IList<DailyRevenueDto>> BuildQuarterRevenueHistoryAsync(int year, int quarter)
     {
-        var dayNames = new[] { "CN", "T2", "T3", "T4", "T5", "T6", "T7" };
         var result = new List<DailyRevenueDto>();
-        for (var i = days - 1; i >= 0; i--)
+        var firstMonth = (quarter - 1) * 3 + 1;
+
+        for (var month = firstMonth; month < firstMonth + 3; month++)
         {
-            var d = toDate.AddDays(-i);
-            var start = d.ToDateTime(TimeOnly.MinValue);
-            var end = start.AddDays(1);
+            var start = new DateTime(year, month, 1);
+            var end = start.AddMonths(1);
             var rev = await _db.Bookings
                 .Where(b => b.Status == BookingStatus.Completed && b.CompletedAt >= start && b.CompletedAt < end)
                 .SumAsync(b => (decimal?)b.FinalPrice) ?? 0m;
-            result.Add(new DailyRevenueDto { Day = dayNames[(int)d.DayOfWeek], Value = rev });
+            result.Add(new DailyRevenueDto { Day = $"T{month}", Value = rev });
         }
+
         return result;
+    }
+
+    private async Task<IList<int>> GetAvailableRevenueYearsAsync(int fallbackYear)
+    {
+        var years = await _db.Bookings
+            .AsNoTracking()
+            .Where(booking => booking.Status == BookingStatus.Completed && booking.CompletedAt.HasValue)
+            .Select(booking => booking.CompletedAt!.Value.Year)
+            .Distinct()
+            .OrderByDescending(year => year)
+            .ToListAsync();
+
+        if (!years.Contains(fallbackYear))
+        {
+            years.Insert(0, fallbackYear);
+        }
+
+        return years;
     }
 
     private async Task<decimal> CalculateSlotUtilisationAsync(DateTime dayStart, DateTime dayEnd)

@@ -77,10 +77,6 @@ export function AdminShell({ active, title, subtitle, children, headerActions })
               {subtitle && <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>{subtitle}</span>}
             </div>
           </div>
-          <div style={{ position: 'relative', width: 220 }}>
-            <Icons.Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-400)' }} />
-            <input className="aw-input" placeholder="Tìm kiếm..." style={{ paddingLeft: 30, height: 30, fontSize: 12 }} />
-          </div>
           {headerActions}
         </header>
         <div style={{ flex: 1, overflow: 'auto' }}>{children}</div>

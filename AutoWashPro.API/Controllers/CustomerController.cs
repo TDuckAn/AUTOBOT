@@ -13,11 +13,13 @@ namespace AutoWashPro.API.Controllers;
 public class CustomerController(
     ICustomerService customerService,
     ILoyaltyService loyaltyService,
+    IPromotionService promotionService,
     IVoucherService voucherService,
     ILogger<CustomerController> logger) : ControllerBase
 {
     private readonly ICustomerService _customerService = customerService;
     private readonly ILoyaltyService _loyaltyService = loyaltyService;
+    private readonly IPromotionService _promotionService = promotionService;
     private readonly IVoucherService _voucherService = voucherService;
     private readonly ILogger<CustomerController> _logger = logger;
 
@@ -115,6 +117,19 @@ public class CustomerController(
         }
 
         var result = await _customerService.GetNotificationsAsync(customerId.Value, page, pageSize);
+        return result.IsSuccess ? Ok(result.Value) : BadRequest(result.Error);
+    }
+
+    [HttpGet("promotions")]
+    public async Task<IActionResult> GetPromotions([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    {
+        var customerId = GetPrincipalId();
+        if (customerId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _promotionService.GetAvailablePromotionsAsync(customerId.Value, page, pageSize);
         return result.IsSuccess ? Ok(result.Value) : BadRequest(result.Error);
     }
 
